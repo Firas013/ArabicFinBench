@@ -23,14 +23,14 @@ import numpy as np
 from apted import APTED
 from lxml import html
 
-from parse_bench.evaluation.metrics.parse import fast_tree_edit
-from parse_bench.evaluation.metrics.parse.grits_metric import (
+from extract_bench.evaluation.metrics.parse import fast_tree_edit
+from extract_bench.evaluation.metrics.parse.grits_metric import (
     _lcs_similarity,
     cells_to_grid,
     factored_2dmss,
     html_to_cells,
 )
-from parse_bench.evaluation.metrics.parse.teds_metric import (
+from extract_bench.evaluation.metrics.parse.teds_metric import (
     ALL_TEDS_VARIANTS,
     TEDS,
     VARIANT_CONFIGS,
