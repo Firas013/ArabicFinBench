@@ -1,15 +1,48 @@
 # Available Pipelines
 
-All pipelines can be run with:
-
-```bash
-uv run parse-bench run <pipeline_name>
-```
-
 To see the full list:
 
 ```bash
-uv run parse-bench pipelines
+uv run extract-bench pipelines
+```
+
+## Extract Pipelines (ExtractBench)
+
+Extraction pipelines run per split over the ExtractBench dataset:
+
+```bash
+uv run extract-bench download
+uv run extract-bench run <pipeline_name>
+```
+
+| Pipeline | Provider | Notes |
+|---|---|---|
+| `llamaextract_cost_effective` / `llamaextract_agentic` | LlamaExtract V2 API | word-grounded citations, via a parse at the same tier (`LLAMA_CLOUD_API_KEY`) |
+| `llamaextract_agentic_plus` | LlamaExtract V2 API | highest tier; returns word-level citation boxes natively, no parse pass needed |
+| `llamaextract_cost_effective_standard_bbox` / `llamaextract_agentic_standard_bbox` | LlamaExtract V2 API | same tiers with block-level citation boxes and no granular parse pass |
+| `openai_gpt_5_4_extract_oneshot_structured_output_file` (+ `_nano`) | OpenAI Responses | one-shot structured output over the uploaded file |
+| `gemini_3_5_flash_extract_oneshot_structured_output_file` | Gemini | one-shot structured output |
+| `anthropic_haiku_4_5_extract_oneshot_structured_output_file` | Anthropic | one-shot structured output |
+| `*_extract_twostage_parse_agentic_structured_output_text` | OpenAI / Gemini / Anthropic | LlamaParse agentic markdown → text extract; cost totals parse + extract |
+| `deepseek_v4_pro_extract_twostage_parse_agentic_structured_output_text` | DeepSeek (Fireworks) | two-stage text extract |
+| `claude_code_extract_opus_4_8` | Claude Code CLI | agentic extraction; cost from CLI `total_cost_usd` |
+| `codex_code_extract_gpt_5_4_low` / `codex_code_extract_gpt_5_5_low` / `codex_code_extract_gpt_5_5_high` | Codex CLI | agentic extraction; cost estimated from token usage |
+| `reducto_extract` / `reducto_deep_extract` | Reducto | deep variant adds citations |
+| `extend_extract` / `extend_extract_max` | Extend | citations enabled; max-context array strategy variant |
+| `landingai_extract` | LandingAI ADE | |
+| `datalab_parse_accurate_extract_fast` / `_balanced` | Datalab | accurate parse + fast or balanced extraction, JSON tree citations |
+| `lift_extract` | Self-hosted lift SDK | requires `LIFT_ENDPOINT_URL` |
+| `qwen3_6_35b_a3b_fp8_vllm_extract_oneshot_structured_output_file` | Self-hosted vLLM | JSON Schema guided decoding; requires `QWEN35_SERVER_URL` |
+| `gemma4_26b_vllm_extract_oneshot_structured_output_file` | Self-hosted vLLM | JSON Schema guided decoding; requires `GEMMA4_SERVER_URL` |
+| `nuextract3_extract` | Self-hosted vLLM | schema converted to a NuExtract template; requires `NUEXTRACT3_SERVER_URL` |
+
+## Parse Pipelines
+
+Parse pipelines (inherited from ParseBench, used here by the two-stage extract
+baselines and grounding cross-eval) can be run with:
+
+```bash
+uv run extract-bench run <pipeline_name>
 ```
 
 ## Setup

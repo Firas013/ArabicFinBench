@@ -209,14 +209,15 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Internal scripts
-scripts/convert_sidecar_to_jsonl.py
-
-# Internal research documentation
-internal_docs/
-data/
-!src/parse_bench/data/
+# Maintainer working files (kept local, not part of the release)
+INTEGRATION_PLAN.md
+PROGRESS.md
+scripts/build_hf_dataset.py
 CLAUDE.md
 .DS_Store
+
+# Local datasets and run artifacts
+data/
+!src/extract_bench/data/
 output/
-data_small/
+results/
