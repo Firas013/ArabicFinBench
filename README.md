@@ -1,178 +1,255 @@
-# ParseBench
+# ExtractBench
 
-[![Website](https://img.shields.io/badge/Website-parsebench.ai-blue)](https://parsebench.ai)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.08538-b31b1b.svg)](https://arxiv.org/abs/2604.08538)
-[![Dataset](https://img.shields.io/badge/HuggingFace-Dataset-yellow)](https://huggingface.co/datasets/llamaindex/ParseBench)
+[![arXiv](https://img.shields.io/badge/arXiv-2607.29677-b31b1b.svg)](https://arxiv.org/abs/2607.29677)
+[![Dataset](https://img.shields.io/badge/HuggingFace-Dataset-yellow)](https://huggingface.co/datasets/llamaindex/ExtractBench)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 
-**ParseBench** is a benchmark for evaluating how well document parsing tools convert PDFs into structured output that AI agents can reliably act on. It tests whether parsed output preserves the structure and meaning needed for autonomous decisions — not just whether it looks similar to a reference text.
+**ExtractBench** is a benchmark for **schema-guided extraction** from enterprise documents. Given a document and a user-defined JSON Schema, a system must return schema-valid JSON with the correct values, *every* record of each repeated structure, missing fields marked `null` rather than invented, and source evidence for each value.
 
-The benchmark covers ~2,000 human-verified pages from real enterprise documents (insurance, finance, government), organized around five capability dimensions, each targeting a failure mode that breaks production agent workflows.
+A schema defines one extraction task, and all documents of that type share it: one invoice schema covers invoices from every vendor, however different each one looks. Enterprises write a new schema for almost every workflow, so a system cannot be tuned to a fixed template. It has to handle schemas and documents it has never seen. And because agents increasingly act on extracted values before anyone reviews them, one truncated schedule or one invented value becomes a wrong payment or a wrong decision. The benchmark therefore scores completeness and traceability.
+
+The benchmark covers **370 documents (4,869 pages)** across 8 business domains and 67 document types, each type with its own schema. Every document is tagged along five independent axes: task challenge, perception challenge, table structure, length, and business domain, so a low score can be traced to its cause.
 
 <p align="center">
-  <img src="docs/parsebench_teaser.png" alt="ParseBench overview: five capability dimensions" width="100%">
+  <img src="docs/extractbench_teaser.png" alt="ExtractBench: JSON Schema and document in; JSON plus evidence out; scored on value F1, grounding F1, challenge tags, and cost" width="100%">
 </p>
 
 ## Leaderboard
 
-<!-- LEADERBOARD:START -->
-_Top 10 by Overall score. For the full sortable, filterable leaderboard, see [parsebench.ai](https://parsebench.ai); for raw data, see [leaderboard.csv](leaderboard.csv)._
+Models and prices reflect each provider's official documentation as of July 1, 2026; each system uses its recommended configuration.
 
-| Rank | Provider | Category | Overall | Tables | Charts | Content Faith. | Sem. Format. | Visual Ground. | ¢ / Page |
-|---:|---|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | LlamaParse Agentic | LlamaParse | 84.88 | 90.74 | 78.11 | 89.68 | 85.24 | 80.62 | 1.25¢ |
-| 2 | Pulse Ultra 2 | Commercial - Startup APIs | 77.08 | 75.45 | 90.82 | 79.49 | 73.05 | 66.56 | 15¢ |
-| 3 | LlamaParse Cost Effective | LlamaParse | 76.77 | 81.42 | 70.15 | 90.92 | 68.78 | 72.59 | 0.38¢ |
-| 4 | KDL-Frontier-Parser-nano | VLM - Open Weight | 76.36 | 85.56 | 63.41 | 87.19 | 66.81 | 78.84 | — |
-| 5 | Extend (2.0) | Commercial - Startup APIs | 75.33 | 84.82 | 78.31 | 84.59 | 60.31 | 68.61 | 2.50¢ |
-| 6 | Google Gemini 3 Flash (Thinking High) | VLM - Proprietary | 75.05 | 91.50 | 64.79 | 90.87 | 68.31 | 59.77 | 2.41¢ |
-| 7 | Infinity-Parser2-Pro | VLM - Open Weight | 74.28 | 86.4 | 61.3 | 89.7 | 59.1 | 74.9 | — |
-| 8 | Extend Light (1.0) | Commercial - Startup APIs | 73.26 | 75.8 | 78.6 | 84.8 | 58.6 | 68.5 | 0.62¢ |
-| 9 | Infinity-Parser2-Flash | VLM - Open Weight | 73.25 | 82.88 | 55.56 | 89.52 | 57.7 | 80.61 | — |
-| 10 | Reducto (Agentic) | Commercial - Startup APIs | 72.97 | 80.42 | 73.4 | 86.37 | 57.6 | 67.07 | 4.76¢ |
+<!-- LEADERBOARD:START -->
+**Unified value F1** — the headline metric. Every score is an unweighted mean over documents; each document counts once, whatever its length. For raw data including per-split precision and recall, cost, and latency, see [leaderboard.csv](leaderboard.csv). The best score in each Overall, Short, Medium, and Long column is **bold**; the second-best distinct score is <u>underlined</u>.
+
+| Rank | Provider | Category | Overall | Short | Medium | Long | ¢ / Page |
+|---:|---|---|---:|---:|---:|---:|---:|
+| 1 | LlamaExtract Agentic Plus | LlamaExtract | **95.59** | **96.56** | **93.34** | **94.41** | 8.11¢ |
+| 2 | Codex (GPT-5.5) | Coding Agents | <u>93.57</u> | <u>95.68</u> | <u>91.15</u> | 78.88 | 27.83¢ |
+| 3 | Reducto Deep Extract | Specialized APIs | 90.44 | 94.20 | 80.47 | <u>92.01</u> | 34.44¢ |
+| 4 | LlamaExtract Agentic | LlamaExtract | 89.55 | 92.03 | 85.41 | 78.62 | 3.12¢ |
+| 5 | Qwen3.6 35B | OSS | 87.33 | 93.11 | 84.85 | 26.75 | — |
+| 6 | Claude Code (Opus 4.8) | Coding Agents | 87.09 | 90.08 | 79.21 | 88.07 | 16.17¢ |
+| 7 | LlamaExtract Cost-Effective | LlamaExtract | 86.78 | 90.77 | 80.12 | 69.17 | 1.00¢ |
+| 8 | Extend (Max Context) | Specialized APIs | 86.29 | 91.98 | 78.78 | 51.33 | 10.00¢ |
+| 9 | Google Gemini 3.5 Flash | Commercial VLM | 79.84 | 87.87 | 69.76 | 27.90 | 1.00¢ |
+| 10 | Lift Datalab 9B | OSS | 77.31 | 87.17 | 62.59 | 25.26 | — |
+| 11 | OpenAI GPT-5.4 Nano | Commercial VLM | 74.90 | 77.43 | 76.37 | 35.81 | 0.21¢ |
+| 12 | Gemma4 26B | OSS | 66.24 | 80.55 | 40.47 | 12.16 | — |
+| 13 | Datalab (Accurate + Balanced) | Specialized APIs | 64.48 | 62.77 | 73.75 | 40.54 | 3.50¢ |
+| 14 | NuExtract3 | OSS | 47.93 | 54.36 | 39.34 | 8.95 | — |
 <!-- LEADERBOARD:END -->
 
-**Inclusion criteria:**
+<!-- GROUNDING:START -->
+**Grounding F1** — a field counts only when its value is accepted *and* it points at the right evidence: at word level the predicted box must overlap an accepted evidence box at IoU 0.5, at page level the cited page must be correct. Scored only over the documents that carry verified box ground truth.
+
+<table>
+  <thead>
+    <tr><th rowspan="2">Rank</th><th rowspan="2">Provider</th><th colspan="4">Word-level grounding F1</th><th colspan="4">Page-level grounding F1</th></tr>
+    <tr><th align="right">Overall</th><th align="right">Short</th><th align="right">Medium</th><th align="right">Long</th><th align="right">Overall</th><th align="right">Short</th><th align="right">Medium</th><th align="right">Long</th></tr>
+  </thead>
+  <tbody>
+    <tr><td align="right">1</td><td>LlamaExtract Agentic Plus</td><td align="right"><strong>46.43</strong></td><td align="right"><strong>43.74</strong></td><td align="right"><strong>54.01</strong></td><td align="right"><strong>54.67</strong></td><td align="right"><strong>84.92</strong></td><td align="right"><strong>89.70</strong></td><td align="right"><strong>72.25</strong></td><td align="right"><strong>87.14</strong></td></tr>
+    <tr><td align="right">2</td><td>LlamaExtract Agentic</td><td align="right"><u>44.14</u></td><td align="right">42.30</td><td align="right"><u>50.47</u></td><td align="right"><u>45.68</u></td><td align="right">66.12</td><td align="right">69.73</td><td align="right">56.59</td><td align="right"><u>67.60</u></td></tr>
+    <tr><td align="right">3</td><td>Reducto Deep Extract</td><td align="right">43.30</td><td align="right"><u>42.84</u></td><td align="right">45.57</td><td align="right">41.13</td><td align="right"><u>71.71</u></td><td align="right"><u>72.60</u></td><td align="right"><u>70.42</u></td><td align="right">67.28</td></tr>
+    <tr><td align="right">4</td><td>LlamaExtract Cost-Effective</td><td align="right">40.43</td><td align="right">40.20</td><td align="right">42.30</td><td align="right">36.67</td><td align="right">64.15</td><td align="right">68.90</td><td align="right">53.73</td><td align="right">56.55</td></tr>
+    <tr><td align="right">5</td><td>Extend (Max Context)</td><td align="right">25.08</td><td align="right">33.91</td><td align="right">0.20</td><td align="right">0.02</td><td align="right">48.87</td><td align="right">61.71</td><td align="right">27.68</td><td align="right">0.02</td></tr>
+    <tr><td align="right">6</td><td>Datalab (Accurate + Balanced)</td><td align="right">2.02</td><td align="right">2.67</td><td align="right">0.23</td><td align="right">0.00</td><td align="right">48.50</td><td align="right">56.90</td><td align="right">38.56</td><td align="right">0.01</td></tr>
+    <tr><td align="right">—</td><td><em>All 8 other systems</em></td><td align="right">0.00</td><td align="right">0.00</td><td align="right">0.00</td><td align="right">0.00</td><td align="right">0.00</td><td align="right">0.00</td><td align="right">0.00</td><td align="right">0.00</td></tr>
+  </tbody>
+</table>
+<!-- GROUNDING:END -->
+
+<details>
+<summary><strong>Inclusion criteria</strong></summary>
+
 1. The model or API needs to be publicly accessible, either via open weights or a self-serve API that any user can sign up for.
 2. The benchmark run needs to finish within a reasonable time (roughly single-digit hours).
 3. We can adjust concurrency based on the provider's recommended settings, but providers should not require custom framework changes, so the evaluation stays fair across models.
 
+</details>
+
 ## Quick Start
 
-**Prerequisites:** Create a `.env` file with the API key for the parsing tool you want to evaluate (see [Configuration](#configuration) for details).
+**Prerequisites:** Create a `.env` file with the API key for the extraction system you want to evaluate (see [Configuration](#configuration)).
 
 ```bash
 # Install
 uv sync --extra runners
 
-# Optional: add the `fast` extra for a JIT-accelerated TEDS table metric (numba).
-# Scores are identical to the default path — just faster on large tables.
-uv sync --extra runners --extra fast
+# Quick test run (6 documents — good for trying things out)
+uv run extract-bench run llamaextract_agentic --test
 
-# Quick test run (small dataset, 3 files per category — good for trying things out)
-uv run parse-bench run llamaparse_agentic --test
-
-# Full benchmark run (replace llamaparse_agentic with any pipeline name, see "Available Pipelines" below)
-uv run parse-bench run llamaparse_agentic
+# Full benchmark run (replace with any pipeline name, see "Available Pipelines" below)
+uv run extract-bench run llamaextract_agentic
 
 # View interactive reports in your browser
-uv run parse-bench serve llamaparse_agentic
+uv run extract-bench serve llamaextract_agentic
 ```
 
-## Available Pipelines
-
-A **pipeline** is a document parsing tool or configuration that you want to evaluate. There are 90+ pipelines available -- see [docs/pipelines.md](docs/pipelines.md) for the full list, or run `uv run parse-bench pipelines`.
+> [!WARNING]
+> A full run is **370 documents / 4,869 pages** against a metered API, and costs roughly
+> **$10 to $1,677** depending on which system you evaluate. Start with `--test`, which runs
+> 6 documents for cents on any hosted system.
 
 <details>
-<summary><strong>Paper baselines (21 pipelines)</strong></summary>
+<summary><strong>Rough cost of one full run</strong></summary>
 
-| Pipeline name | Name in paper |
-|---------------|---------------|
-| `llamaparse_agentic` | LlamaParse Agentic |
-| `llamaparse_cost_effective` | LlamaParse Cost Effective |
-| `openai_gpt5_mini_reasoning_medium_parse_with_layout_file` | OpenAI GPT-5 Mini (Reasoning Medium) |
-| `openai_gpt5_mini_reasoning_minimal_parse_with_layout_file` | OpenAI GPT-5 Mini (Reasoning Minimal) |
-| `openai_gpt_5_4_parse_with_layout_file` | OpenAI GPT-5.4 |
-| `anthropic_haiku_parse_with_layout_file` | Anthropic Haiku 4.5 (Disable Thinking) |
-| `anthropic_haiku_thinking_parse_with_layout_file` | Anthropic Haiku 4.5 (Thinking) |
-| `anthropic_opus_4_6_parse_with_layout_file` | Anthropic Opus 4.6 |
-| `google_gemini_3_flash_thinking_minimal_parse_with_layout_file` | Google Gemini 3 Flash (Thinking Minimal) |
-| `google_gemini_3_flash_thinking_high_parse_with_layout_file` | Google Gemini 3 Flash (Thinking High) |
-| `google_gemini_3_1_pro_parse_with_layout_file` | Google Gemini 3.1 Pro |
-| `azure_di_layout` | Azure Document Intelligence |
-| `aws_textract` | AWS Textract |
-| `google_docai_layout` | Google Cloud Document AI |
-| `reducto` | Reducto |
-| `reducto_agentic` | Reducto (Agentic) |
-| `extend_parse` | Extend |
-| `landingai_parse` | LandingAI |
-| `qwen3_5_4b_vllm_parse` | Qwen 3 VL |
-| `dots_ocr_1_5_parse` | Dots OCR 1.5 |
-| `docling_parse` | Docling |
+Costs use each provider's official listed price as of July 1, 2026.
+
+| Category | One full run | Examples |
+|---|---:|---|
+| Commercial VLM | $10 – $49 | GPT-5.4 Nano ~$10, Gemini 3.5 Flash ~$49 |
+| LlamaExtract | $49 – $395 | Cost-Effective ~$49, Agentic ~$152, Agentic Plus ~$395 |
+| Specialized APIs | $170 – $1,677 | Datalab ~$170, Extend ~$487, Reducto Deep Extract ~$1,677 |
+| Coding agents | $787 – $1,355 | Claude Code (Opus 4.8) ~$787, Codex (GPT-5.5) ~$1,355 |
+| Self-hosted open weights | GPU time only | Qwen3.6 35B, Gemma4 26B, NuExtract3, Lift Datalab 9B |
+
+These figures apply the reported mean cost per page to 4,869 pages. Per-system, per-split prices are in [leaderboard.csv](leaderboard.csv) (`Cost_Per_Page`, `Cost_Short`, `Cost_Medium`, `Cost_Long`, in dollars per page).
 
 </details>
 
+## Available Pipelines
+
+A **pipeline** is an extraction system or configuration you want to evaluate. Run `uv run extract-bench pipelines` for the live list, or see [docs/pipelines.md](docs/pipelines.md).
+
+<details>
+<summary><strong>Paper baselines (the 14 systems on the leaderboard)</strong></summary>
+
+| Pipeline name | Name in paper |
+|---------------|---------------|
+| `llamaextract_agentic_plus` | LlamaExtract Agentic Plus |
+| `llamaextract_agentic` | LlamaExtract Agentic |
+| `llamaextract_cost_effective` | LlamaExtract Cost-Effective |
+| `reducto_deep_extract` | Reducto Deep Extract |
+| `extend_extract_max` | Extend (Max Context) |
+| `datalab_parse_accurate_extract_balanced` | Datalab (Accurate + Balanced) |
+| `codex_code_extract_gpt_5_5_low` | Codex (GPT-5.5) |
+| `claude_code_extract_opus_4_8` | Claude Code (Opus 4.8) |
+| `qwen3_6_35b_a3b_fp8_vllm_extract_oneshot_structured_output_file` | Qwen3.6 35B (self-hosted) |
+| `gemma4_26b_vllm_extract_oneshot_structured_output_file` | Gemma4 26B (self-hosted) |
+| `nuextract3_extract` | NuExtract3 (self-hosted) |
+| `lift_extract` | Lift Datalab 9B (self-hosted) |
+| `gemini_3_5_flash_extract_oneshot_structured_output_file` | Google Gemini 3.5 Flash |
+| `openai_gpt_5_4_nano_extract_oneshot_structured_output_file` | OpenAI GPT-5.4 Nano |
+
+The four self-hosted pipelines need an endpoint you run yourself; see [.env.example](.env.example). Other configurations of the same systems are registered too (`reducto_extract`, `extend_extract`, `codex_code_extract_gpt_5_5_high`, the two-stage parse baselines, and more). Run `uv run extract-bench pipelines` for the full roster.
+
+All three LlamaExtract tiers return word-level citation boxes, so both grounding metrics are meaningful on each. `llamaextract_agentic_plus` does it natively. `llamaextract_cost_effective` and `llamaextract_agentic` get there by running a parse at their own tier that emits word boxes, which is a second job. `llamaextract_cost_effective_standard_bbox` and `llamaextract_agentic_standard_bbox` are those two tiers without that parse pass: one job instead of two, but citations carry only block-level boxes, so word-level grounding scores near zero.
+
+</details>
+
+> [!NOTE]
+> `claude_code_extract_*` and `codex_code_extract_*` run a coding agent on your machine, so they execute local shell commands against benchmark documents. Run them in a container or VM. Every other pipeline is an ordinary API call.
+
+The parse and layout-detection rosters inherited from [ParseBench](https://github.com/run-llama/ParseBench) are still registered and runnable by name; list them with `extract-bench pipelines --parse`, `--layout`, or `--all`. They are hidden from the default listing because this benchmark scores extraction; the two-stage extract pipelines use them internally as their parse stage.
+
 ## Dataset
 
-Hosted on HuggingFace: [`llamaindex/ParseBench`](https://huggingface.co/datasets/llamaindex/ParseBench)
+Hosted on HuggingFace: [`llamaindex/ExtractBench`](https://huggingface.co/datasets/llamaindex/ExtractBench)
 
-The dataset is stratified into five capability dimensions, each with its own ground-truth format and evaluation metric:
+The benchmark is split by document length, with one JSONL row per (document, schema) test case plus the source PDFs:
 
-| Dimension | File(s) | Metric | Pages | Docs | Rules |
-|-----------|---------|--------|------:|-----:|------:|
-| **Tables** | `table.jsonl` | GTRM (GriTS + TableRecordMatch) | 503 | 284 | --- |
-| **Charts** | `chart.jsonl` | ChartDataPointMatch | 568 | 99 | 4,864 |
-| **Content Faithfulness** | `text_content.jsonl` | Content Faithfulness Score | 506 | 506 | 141,322 |
-| **Semantic Formatting** | `text_formatting.jsonl` | Semantic Formatting Score | 476 | 476 | 5,997 |
-| **Visual Grounding** | `layout.jsonl` | Element Pass Rate | 500 | 321 | 16,325 |
-| **Total (unique)** | | | **2,078** | **1,211** | **169,011** |
+| Split | File | Documents | Pages | Length |
+|-------|------|----------:|------:|--------|
+| **Short** | `short.jsonl` | 252 | 615 | ≤10 pages |
+| **Medium** | `medium.jsonl` | 98 | 2,438 | 11–50 pages |
+| **Long** | `long.jsonl` | 20 | 1,816 | >50 pages |
+| **Total** | | **370** | **4,869** | |
 
-Content Faithfulness and Semantic Formatting share the same 507 underlying text documents, evaluated with different rule sets. Totals reflect unique pages and documents. Tables uses a continuous metric (no discrete rules).
+The benchmark spans 8 business domains and 67 document types: finance and fund holdings, energy-sector regulatory forms, government procurement and customs, auto valuation, supply chain, healthcare remittance, legal and bankruptcy filings, and real estate.
 
-**What each dimension tests and why it matters for agents:**
+<details>
+<summary><strong>Tag axes, sources, and ground truth</strong></summary>
 
-- **Tables** — Structural fidelity of merged cells and hierarchical headers. A misaligned header means the agent reads the wrong column when looking up a value.
-- **Charts** — Exact data point extraction with correct series and axis labels from bar, line, pie, and compound charts. Most parsers return raw text instead of structured data, leaving agents unable to extract precise values.
-- **Content Faithfulness** — Omissions, hallucinations, and reading-order violations. If the agent's context is incomplete or contains fabricated content, every downstream decision is compromised.
-- **Semantic Formatting** — Preservation of formatting that carries meaning: strikethrough (marks superseded content), superscript/subscript (footnotes, formulas), bold (defined terms, key values), and title hierarchy. A strikethrough price is not the current price.
-- **Visual Grounding** — Tracing every extracted element back to its source location on the page. Required for auditability in regulated workflows where every value must be traceable.
+**What each task challenge tests:**
+
+- **T1: long-list completeness.** Recover *every* record of a repeated structure that can span many pages. Typical failures are truncation, duplicated or merged rows, hallucinated records, and values attached to the wrong record.
+- **T2: needle-in-haystack.** Find a small number of requested facts in a long document. T2 has few target records but many plausible mentions, only one of which is canonical; failures are missed targets, wrong occurrences, and unnormalized paraphrases.
+- **T3: dense documents.** Fill many fields from a document dense with labels, blanks, checkboxes, handwriting, and scan artifacts. The characteristic failure is over-extraction, inventing a value for a field that is actually blank, compounded by missed checkboxes and mislabeled fields.
+
+A document can carry more than one task challenge.
+
+The other axes are tagged independently of the task challenge:
+
+- **Table structure** — S1 merged headers, S2 header not at top / pivoted, S3 cross-page table, S4 enormous table, S5 table within a cell.
+- **Perception challenge** — P1 rotated or image-only capture, P2 scanned page images, and P3 handwriting. 38 documents are degraded re-captures of documents that also appear clean, so capture degradation is a paired measurement on the same documents.
+- **Business domain** — D1 finance (145), D2 energy (98), D3 government (49), D4 automotive (27), D5 supply chain (20), D6 healthcare (15), D7 legal (10), D8 real estate (6).
+
+**Sources.** All documents come from public records: SEC and regulatory filings, government procurement and customs forms, court and agency exhibits (including tax forms such as W-2, 1040, K-1, and 1099-B), Texas Railroad Commission energy filings, and published business documents. 325 are real; 45 are synthetic long lists rendered from real layouts. PDF metadata has been stripped from every file.
+
+**Ground truth** uses a method matched to each source: adjudicated agreement across independent extraction systems for real documents, values fixed before rendering for synthetic long lists, and human-verified values and boxes for forms. Each field's ground truth is an *evidence list* — the expected value plus any alternate acceptable readings, each with its source location — and scoring accepts a match against any listed reading.
+
+</details>
 
 The dataset is automatically downloaded when you run a pipeline. To manage it manually:
 
 ```bash
 # Download the full dataset
-uv run parse-bench download
+uv run extract-bench download
 
-# Download a small test dataset (3 files per category, good for trying things out)
-uv run parse-bench download --test
+# Download a small test dataset (6 documents, good for trying things out)
+uv run extract-bench download --test
 
 # Check whether the dataset has been downloaded and show summary statistics
-uv run parse-bench status
+uv run extract-bench status
 ```
+
+## Metrics
+
+ExtractBench reports one metric for value accuracy and two for grounding. We score the grounding metrics only on fields that carry verified box ground truth.
+
+- **Unified value F1** — whether the extracted *values* match the expected output, under one definition for scalar fields and arrays of records. Each output is flattened into cells, one per scalar field and per aligned record subfield, and a cell is correct when it matches its expected counterpart after normalization. Precision, recall, and F1 are computed over these cells per document; slices report unweighted document means.
+- **Word-level grounding F1** — a field is grounded-correct only when its value is accepted *and* its predicted box overlaps any accepted box on its evidence list, at IoU 0.5.
+- **Page-level grounding F1** — the same rule against the cited source page instead of the box: a field counts only when its value is accepted and the page it cites is correct.
+
+<details>
+<summary><strong>How the unified value F1 is computed</strong></summary>
+
+- **Array alignment.** A repeated structure compares as an unordered set of records: records pair by a globally optimal one-to-one assignment (the Hungarian algorithm) that minimizes mismatched cells. Unmatched expected records lower recall, surplus predictions lower precision.
+- **Normalization.** Matching is deterministic and mostly exact: dates in eight written formats canonicalize to ISO form, strings compare exactly after whitespace collapsing, and everything else uses plain equality, with no numeric tolerance and no LLM judge.
+- **Missing values.** An omitted key scores as an explicit `null`, every scalar field enters both denominators, and a correct `null` on a blank field is credited. Only repeated records move precision and recall apart, so a gap between them means records were dropped or invented.
+
+</details>
+
+Failed and missing documents score zero rather than being dropped, so a pipeline cannot raise its average by erroring out on the documents it finds hardest.
 
 ## Usage
 
 ### Running the Benchmark
 
-The `run` command runs inference (calls the parsing tool), evaluates the results against ground truth, and generates reports:
+The `run` command runs inference, evaluates against ground truth, and generates reports:
 
 ```bash
-# Evaluate a parsing tool on all five dimensions
-uv run parse-bench run <pipeline_name>
+# Evaluate an extraction system on the whole benchmark
+uv run extract-bench run <pipeline_name>
 
-# Evaluate on a single dimension only (e.g., chart, table, layout, text_content, text_formatting)
-uv run parse-bench run <pipeline_name> --group chart
+# Evaluate a single split only (short, medium, long)
+uv run extract-bench run <pipeline_name> --group short
 
-# Skip calling the parsing tool — just re-evaluate existing results
-uv run parse-bench run <pipeline_name> --skip_inference
+# Skip calling the extraction system — just re-evaluate existing results
+uv run extract-bench run <pipeline_name> --skip_inference
 
-# Control how many pages are processed in parallel
-uv run parse-bench run <pipeline_name> --max_concurrent 10
+# Control how many documents are processed in parallel
+uv run extract-bench run <pipeline_name> --max_concurrent 10
 
-# Run on the small test dataset only (3 files per category, good for trying things out)
-uv run parse-bench run <pipeline_name> --test
+# Run on the small test dataset only
+uv run extract-bench run <pipeline_name> --test
 ```
-
-When running all dimensions, the benchmark produces:
-- Per-dimension detailed HTML reports with drill-down per test case
-- An aggregation dashboard showing all dimensions side-by-side
-- A leaderboard comparing all evaluated tools in the output directory
-- CSV, Markdown, and JSON exports per dimension
 
 ### Viewing & Comparing Results
 
 ```bash
 # View reports in your browser (needed because browsers block PDF rendering from file:// URLs)
-uv run parse-bench serve <pipeline_name>
+uv run extract-bench serve <pipeline_name>
 
-# Compare two parsing tools side-by-side
-uv run parse-bench compare <pipeline_a> <pipeline_b>
+# Compare two extraction systems side-by-side
+uv run extract-bench compare <pipeline_a> <pipeline_b>
 
-# Generate a leaderboard across all evaluated tools
-uv run parse-bench leaderboard
+# Generate a leaderboard across all evaluated systems
+uv run extract-bench leaderboard
 
-# Leaderboard for specific tools only
-uv run parse-bench leaderboard llamaparse_agentic llamaparse_cost_effective
+# Leaderboard for specific systems only
+uv run extract-bench leaderboard llamaextract_agentic llamaextract_cost_effective
 ```
 
 <details>
@@ -181,25 +258,22 @@ uv run parse-bench leaderboard llamaparse_agentic llamaparse_cost_effective
 For fine-grained control over individual steps:
 
 ```bash
-# Run inference only (call the parsing tool, don't evaluate)
-uv run parse-bench inference run <pipeline_name>
+# Run inference only (call the extraction system, don't evaluate)
+uv run extract-bench inference run <pipeline_name> data/short --output_dir output
 
 # Run evaluation only (on existing inference results)
-uv run parse-bench evaluation run --output_dir ./output/<pipeline_name>
+uv run extract-bench evaluation run output/<pipeline_name> --test_cases_dir data
 
 # Generate detailed HTML report from evaluation results
-uv run parse-bench analysis generate_report --evaluation_dir ./output/<pipeline_name>
-
-# Regenerate the aggregation dashboard
-uv run parse-bench analysis generate_dashboard --evaluation_dir ./output/<pipeline_name>
+uv run extract-bench analysis generate_report --evaluation_dir ./output/<pipeline_name>
 ```
 
 </details>
 
 <details>
-<summary><strong>Evaluating Your Own Tool</strong></summary>
+<summary><strong>Evaluating Your Own System</strong></summary>
 
-To add a new parsing tool to ParseBench, use [Claude Code](https://claude.ai/code):
+To add a new extraction system, use [Claude Code](https://claude.ai/code):
 
 ```bash
 /integrate-pipeline <name> <API docs or SDK link>
@@ -213,45 +287,38 @@ This creates the provider, registers the pipeline, and updates docs. The skill d
 
 ### API Keys
 
-Each pipeline calls a specific parsing tool's API. You only need the API key for the tool you want to evaluate — add it to a `.env` file at the project root:
+Each pipeline calls a specific system's API. You only need the key for the system you want to evaluate. Add it to a `.env` file at the project root (see [.env.example](.env.example) for the full list):
 
 ```bash
-# Only add the keys you need. For example, to evaluate LlamaParse:
+# Only add the keys you need. For example, to evaluate LlamaExtract:
 LLAMA_CLOUD_API_KEY=...
-
-# Optional: point LlamaParse at a custom API base URL,
-# e.g. http://localhost:8000. Takes precedence over staging/EU/prod selection.
-LLAMA_CLOUD_BASE_URL=...
 
 # To evaluate OpenAI-based pipelines:
 OPENAI_API_KEY=...
 
-# To evaluate Anthropic-based pipelines:
+# To evaluate Anthropic-based pipelines (including claude_code_extract_*):
 ANTHROPIC_API_KEY=...
 
 # To evaluate Google-based pipelines:
 GOOGLE_API_KEY=...
+
+# Codex coding-agent pipelines authenticate the codex CLI:
+CODEX_API_KEY=...
 ```
 
-ParseBench does **not** use LLM-as-a-judge — all evaluation is deterministic and rule-based. API keys are only used to call the parsing tool being evaluated.
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PARSEBENCH_FAST_TEDS` | `1` | Fast Zhang-Shasha TEDS table metric (uses the `numba` JIT when the [`fast` extra](#quick-start) is installed, otherwise an exact pure-Python fallback). Set to `0` to force the original APTED implementation — scores are identical either way, so this is only needed for debugging or benchmarking. |
+ExtractBench does not use LLM-as-a-judge; all value scoring is deterministic. Your keys only ever call the extraction system you are evaluating.
 
 ### CLI Reference
 
 | Command | Description |
 |---------|-------------|
-| `parse-bench run` | Evaluate a parsing tool end-to-end (inference + evaluation + reports) |
-| `parse-bench download` | Download the benchmark dataset from HuggingFace |
-| `parse-bench status` | Check whether the dataset has been downloaded |
-| `parse-bench pipelines` | List all available parsing tools / pipeline configurations |
-| `parse-bench compare` | Compare results from two parsing tools side-by-side |
-| `parse-bench leaderboard` | Generate a leaderboard across all evaluated tools |
-| `parse-bench serve` | View HTML reports in your browser (with PDF rendering support) |
+| `extract-bench run` | Evaluate an extraction system end-to-end (inference + evaluation + reports) |
+| `extract-bench download` | Download the benchmark dataset from HuggingFace |
+| `extract-bench status` | Check whether the dataset has been downloaded |
+| `extract-bench pipelines` | List extraction pipelines (`--parse`, `--layout`, `--all` for the rest) |
+| `extract-bench compare` | Compare results from two systems side-by-side |
+| `extract-bench leaderboard` | Generate a leaderboard across all evaluated systems |
+| `extract-bench serve` | View HTML reports in your browser (with PDF rendering support) |
 
 Advanced subcommands: `inference`, `evaluation`, `analysis`, `pipeline`, `data`
 
@@ -262,17 +329,15 @@ Advanced subcommands: `inference`, `evaluation`, `analysis`, `pipeline`, `data`
 output/
 ├── _leaderboard.html                       # Cross-pipeline leaderboard
 └── <pipeline_name>/
-    ├── chart/
+    ├── short/
     │   ├── *.result.json                    # Inference results
     │   ├── _evaluation_report.json          # Evaluation summary
     │   ├── _evaluation_report_detailed.html # Interactive detailed report
     │   ├── _evaluation_results.csv          # Per-example CSV
     │   └── _evaluation_report.md            # Markdown summary
-    ├── layout/   (same structure)
-    ├── table/    (same structure)
-    ├── text_content/   (same structure)
-    ├── text_formatting/ (same structure)
-    ├── _evaluation_report_dashboard.html    # Aggregation dashboard
+    ├── medium/  (same structure)
+    ├── long/    (same structure)
+    ├── _errors.json                         # Per-document inference failures
     └── _metadata.json                       # Run metadata
 ```
 
@@ -282,7 +347,7 @@ output/
 <summary><strong>Project Structure</strong></summary>
 
 ```
-src/parse_bench/
+src/extract_bench/
 ├── cli.py                           # Fire CLI entry point
 ├── pipeline/cli.py                  # End-to-end pipeline orchestration
 ├── data/
@@ -290,25 +355,23 @@ src/parse_bench/
 │   └── cli.py                       # Data management CLI
 ├── inference/
 │   ├── runner.py                    # Batch inference with concurrency
-│   ├── pipelines/                   # Pipeline registry (parse, extract, layout)
+│   ├── pipelines/                   # Pipeline registry (extract, parse, layout)
 │   └── providers/                   # Provider implementations per product type
 ├── evaluation/
-│   ├── runner.py                    # Parallel evaluation
-│   ├── evaluators/                  # Product-specific evaluators (parse, extract, layout)
-│   ├── metrics/                     # Metric implementations (TEDS, GriTS, rules, IoU)
+│   ├── runner.py                    # Parallel evaluation + failure penalties
+│   ├── evaluators/                  # Product-specific evaluators
+│   ├── metrics/extract/             # Unified value F1, grounding, record matching
 │   └── reports/                     # CSV, HTML, markdown export
 ├── analysis/
-│   ├── aggregation_report.py        # Multi-category dashboard
-│   ├── detailed_report.py           # Interactive per-category HTML report
-│   ├── comparison.py                # Pipeline comparison
-│   └── comparison_report.py         # Comparison HTML report
+│   ├── detailed_report.py           # Interactive per-split HTML report
+│   └── comparison.py                # Pipeline comparison
 ├── test_cases/
 │   ├── loader.py                    # Load test cases (JSONL or sidecar .test.json)
-│   └── schema.py                    # TestCase types (Parse, Extract, LayoutDetection)
+│   └── schema.py                    # TestCase types (Extract, Parse, LayoutDetection)
 └── schemas/
     ├── pipeline_io.py               # InferenceRequest, InferenceResult
     ├── evaluation.py                # EvaluationResult, EvaluationSummary
-    └── product.py                   # ProductType enum (PARSE, EXTRACT, LAYOUT_DETECTION)
+    └── product.py                   # ProductType enum
 ```
 
 </details>
@@ -316,19 +379,19 @@ src/parse_bench/
 ## Citation
 
 ```bibtex
-@misc{zhang2026parsebench,
-  title={ParseBench: A Document Parsing Benchmark for AI Agents},
-  author={Boyang Zhang and Sebastián G. Acosta and Preston Carlson and Sacha Bron and Pierre-Loïc Doulcet and Daniel B. Ospina and Simon Suo},
+@misc{zhang2026extractbenchbenchmarkschemaguidedenterprise,
+  title={ExtractBench: A Benchmark for Schema-Guided Enterprise Document Extraction},
+  author={Boyang Zhang and Adrian Lyjak and Eli Stewart and Zhaoqi Li and Simon Suo},
   year={2026},
-  eprint={2604.08538},
+  eprint={2607.29677},
   archivePrefix={arXiv},
-  primaryClass={cs.CV},
-  url={https://arxiv.org/abs/2604.08538},
+  primaryClass={cs.AI},
+  url={https://arxiv.org/abs/2607.29677},
 }
 ```
 
 ## Links
 
-- **Paper**: [arXiv:2604.08538](https://arxiv.org/abs/2604.08538)
-- **HuggingFace Dataset**: [llamaindex/ParseBench](https://huggingface.co/datasets/llamaindex/ParseBench)
-- **Code**: [run-llama/ParseBench](https://github.com/run-llama/ParseBench)
+- **HuggingFace Dataset**: [llamaindex/ExtractBench](https://huggingface.co/datasets/llamaindex/ExtractBench)
+- **Code**: [run-llama/ExtractBench](https://github.com/run-llama/ExtractBench)
+- **ParseBench**: [run-llama/ParseBench](https://github.com/run-llama/ParseBench) — the document-parsing sibling benchmark

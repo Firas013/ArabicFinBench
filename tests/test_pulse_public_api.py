@@ -1,8 +1,8 @@
 from datetime import datetime
 from pathlib import Path
 
-from parse_bench.inference.pipelines import get_pipeline
-from parse_bench.inference.providers.parse.pulse import (
+from extract_bench.inference.pipelines import get_pipeline
+from extract_bench.inference.providers.parse.pulse import (
     PulseProvider,
     _build_layout_pages,
     _iter_bbox_elements,
@@ -10,9 +10,9 @@ from parse_bench.inference.providers.parse.pulse import (
     _normalize_coords,
     _strip_html_table_blocks,
 )
-from parse_bench.schemas.pipeline import PipelineSpec
-from parse_bench.schemas.pipeline_io import InferenceRequest, RawInferenceResult
-from parse_bench.schemas.product import ProductType
+from extract_bench.schemas.pipeline import PipelineSpec
+from extract_bench.schemas.pipeline_io import InferenceRequest, RawInferenceResult
+from extract_bench.schemas.product import ProductType
 
 
 class _FakeResponse:
@@ -239,7 +239,7 @@ def test_extract_passes_request_timeout(tmp_path, monkeypatch) -> None:
         seen["timeout"] = timeout
         return _FakeResponse({"markdown": "ok", "bounding_boxes": {}})
 
-    monkeypatch.setattr("parse_bench.inference.providers.parse.pulse.requests.post", fake_post)
+    monkeypatch.setattr("extract_bench.inference.providers.parse.pulse.requests.post", fake_post)
 
     assert provider._extract(str(source))["markdown"] == "ok"
     assert seen["timeout"] == 12
