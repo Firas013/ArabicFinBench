@@ -2,9 +2,9 @@
 
 The base URL is resolved with the precedence:
 ``base_config["base_url"]`` -> ``LLAMA_CLOUD_BASE_URL`` env var ->
-``use_staging`` / ``use_europe`` -> default prod (``None``).
+``use_europe`` -> default prod (``None``).
 
-An explicit override must win over staging/EU selection, and must be
+An explicit override must win over EU selection, and must be
 forwarded into the underlying llama-cloud SDK client constructor. A
 custom deployment may accept any/empty key, so an empty key must not
 crash provider initialization when an explicit base URL is set.
@@ -16,9 +16,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import parse_bench.inference.providers.parse.llamaparse as llamaparse_module
-from parse_bench.inference.providers.base import ProviderPermanentError
-from parse_bench.inference.providers.parse.llamaparse import LlamaParseProvider
+pytest.importorskip("PIL", reason="dev and runners extras required; run: uv sync --extra dev --extra runners")
+
+import extract_bench.inference.providers.parse.llamaparse as llamaparse_module
+from extract_bench.inference.providers.base import ProviderPermanentError
+from extract_bench.inference.providers.parse.llamaparse import LlamaParseProvider
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +29,6 @@ def _clean_llama_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in (
         "LLAMA_CLOUD_API_KEY",
         "LLAMA_CLOUD_BASE_URL",
-        "LLAMA_CLOUD_STAGING_API_KEY",
         "LLAMA_CLOUD_EU_API_KEY",
     ):
         monkeypatch.delenv(var, raising=False)
@@ -56,9 +57,9 @@ def test_base_config_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert provider._base_url == "http://from-config:8000"
 
 
-def test_explicit_base_url_beats_use_staging() -> None:
-    provider = _make_provider({"api_key": "k", "use_staging": True, "base_url": "http://localhost:8000"})
-    assert provider._base_url == "http://localhost:8000"
+def test_no_override_keeps_europe_behavior() -> None:
+    provider = _make_provider({"api_key": "k", "use_europe": True})
+    assert provider._base_url == "https://api.cloud.eu.llamaindex.ai"
 
 
 def test_explicit_base_url_beats_use_europe() -> None:
@@ -81,11 +82,6 @@ def test_base_url_not_forwarded_to_sdk_config() -> None:
 def test_no_override_keeps_default_prod_behavior() -> None:
     provider = _make_provider({"api_key": "k"})
     assert provider._base_url is None
-
-
-def test_no_override_keeps_staging_behavior() -> None:
-    provider = _make_provider({"api_key": "k", "use_staging": True})
-    assert provider._base_url == "https://api.staging.llamaindex.ai"
 
 
 def test_override_forwarded_to_sdk_client() -> None:
