@@ -1,5 +1,6 @@
 # ExtractBench
 
+[![Website](https://img.shields.io/badge/Website-extractbench.ai-blue)](https://www.extractbench.ai/)
 [![arXiv](https://img.shields.io/badge/arXiv-2607.29677-b31b1b.svg)](https://arxiv.org/abs/2607.29677)
 [![Dataset](https://img.shields.io/badge/HuggingFace-Dataset-yellow)](https://huggingface.co/datasets/llamaindex/ExtractBench)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
