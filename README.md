@@ -394,4 +394,4 @@ src/extract_bench/
 
 - **HuggingFace Dataset**: [llamaindex/ExtractBench](https://huggingface.co/datasets/llamaindex/ExtractBench)
 - **Code**: [run-llama/ExtractBench](https://github.com/run-llama/ExtractBench)
-- **ParseBench**: [run-llama/ParseBench](https://github.com/run-llama/ParseBench) — the document-parsing sibling benchmark
+- **ParseBench**: [run-llama/ParseBench](https://github.com/run-llama/ParseBench) — A Document Parsing Benchmark for AI Agents
