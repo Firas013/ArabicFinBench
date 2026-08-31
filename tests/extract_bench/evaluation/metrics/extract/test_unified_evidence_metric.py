@@ -9,9 +9,20 @@ from extract_bench.evaluation.metrics.extract.array_record_match_metric import (
     ArrayRecordMatchMetric,
 )
 from extract_bench.evaluation.metrics.extract.unified_evidence_metric import (
+    build_rule_indexes,
     compute_unified_evidence_metrics,
+    index_citations,
+    iou_xywh,
+    path_leaf,
 )
 from extract_bench.test_cases.schema import ExtractFieldTestRule, FieldEvidence
+
+
+def test_path_leaf_strips_parent_and_trailing_index() -> None:
+    assert path_leaf("account") == "account"
+    assert path_leaf("holdings[0].security") == "security"
+    assert path_leaf("entities[0].aliases[1].name") == "name"
+    assert path_leaf("rows[2]") == "rows"
 
 
 def _schema() -> dict[str, Any]:
@@ -271,9 +282,110 @@ def test_over_extraction_lowers_precision() -> None:
     assert _val(uni, "extract_unified_value_precision") < 1.0  # extra row penalized
 
 
-# ----------------------------------------------------- nested sub-records
-def test_object_array_subfield_gets_per_record_credit() -> None:
-    # `tags` is a list-of-objects sub-record. array_record scores it as one
+def test_bare_object_recurses_to_child_cells() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "vendor": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": ["string", "null"]},
+                    "city": {"type": ["string", "null"]},
+                },
+            }
+        },
+    }
+    expected = {"vendor": {"name": "Acme", "city": "Austin"}}
+    actual = {"vendor": {"name": "Acme", "city": "Dallas"}}
+    rules = [_rule("vendor.name", "Acme"), _rule("vendor.city", "Austin")]
+    uni = compute_unified_evidence_metrics(expected, actual, rules, [], schema)
+    # Two cells, one miss: recall 0.5, precision 0.5 (not one opaque 0).
+    assert _val(uni, "extract_unified_value_recall") == 0.5
+    assert _val(uni, "extract_unified_value_precision") == 0.5
+
+
+def test_omitted_object_is_null_children_not_one_miss() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "vendor": {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": ["string", "null"]},
+                            "city": {"type": ["string", "null"]},
+                        },
+                    },
+                    {"type": "null"},
+                ]
+            }
+        },
+    }
+    expected = {"vendor": {"name": "Acme", "city": "Austin"}}
+    actual: dict[str, Any] = {}
+    rules = [_rule("vendor.name", "Acme"), _rule("vendor.city", "Austin")]
+    uni = compute_unified_evidence_metrics(expected, actual, rules, [], schema)
+    assert _val(uni, "extract_unified_value_recall") == 0.0
+    assert _val(uni, "extract_unified_value_precision") == 0.0
+    # Two implicit-null children (root ``.get``), not one opaque cell.
+    assert _val(uni, "extract_unified_value_recall") == _val(uni, "extract_unified_value_precision")
+
+
+def test_null_object_matches_omitted_and_explicit_null() -> None:
+    schema = {
+        "type": "object",
+        "properties": {"vendor": {"type": ["object", "null"]}},
+    }
+    expected = {"vendor": None}
+    rules = [_rule("vendor", None)]
+    omitted = compute_unified_evidence_metrics(expected, {}, rules, [], schema)
+    explicit = compute_unified_evidence_metrics(expected, {"vendor": None}, rules, [], schema)
+    assert _val(omitted, "extract_unified_value_f1") == 1.0
+    assert _val(explicit, "extract_unified_value_f1") == 1.0
+
+
+def test_object_inside_array_row_recurses_to_child_cells() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "rows": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": ["string", "null"]},
+                        "addr": {
+                            "type": "object",
+                            "properties": {
+                                "city": {"type": ["string", "null"]},
+                                "zip": {"type": ["string", "null"]},
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    }
+    expected = {"rows": [{"id": "1", "addr": {"city": "A", "zip": "1"}}]}
+    actual = {"rows": [{"id": "1", "addr": {"city": "A", "zip": "2"}}]}
+    rules = [
+        _rule("rows[0].id", "1"),
+        _rule("rows[0].addr.city", "A"),
+        _rule("rows[0].addr.zip", "1"),
+    ]
+    uni = compute_unified_evidence_metrics(expected, actual, rules, [], schema)
+    arr = ArrayRecordMatchMetric().compute(expected=expected, actual=actual, data_schema=schema)
+    # id + city match, zip misses: 2/3. array_record still treats addr as one cell (1/2).
+    assert _val(uni, "extract_unified_value_recall") == 2 / 3
+    assert _val(uni, "extract_unified_value_precision") == 2 / 3
+    assert _val(arr, "array_record_recall") == 0.5
+    assert _val(uni, "extract_unified_value_recall") > _val(arr, "array_record_recall")
+
+
+# ----------------------------------------------------- nested object arrays
+def test_object_array_subfield_gets_per_child_credit() -> None:
+    # `tags` is a list of objects. array_record scores it as one
     # opaque cell (whole list mismatches -> 1 of 2 subfields correct -> 0.5);
     # the unified metric recurses, so only tags[1].name is wrong -> 4 of 5
     # cells -> 0.8. This is the depth array_record cannot give.
@@ -317,6 +429,153 @@ def test_object_array_subfield_gets_per_record_credit() -> None:
     assert _val(uni, "extract_unified_value_recall") > _val(arr, "array_record_recall")
 
 
+def test_object_wrapping_array_of_records_with_nested_object_arrays() -> None:
+    """Root object → child object → array of records → nested object-array.
+
+    Inner service rows are reordered; Hungarian at that depth still pairs them.
+    One paid miss: 6 leaves, 5 correct.
+    """
+    schema = {
+        "type": "object",
+        "properties": {
+            "packet": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": ["string", "null"]},
+                    "claims": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "claim_id": {"type": ["string", "null"]},
+                                "services": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "code": {"type": ["string", "null"]},
+                                            "paid": {"type": ["number", "null"]},
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    }
+    expected = {
+        "packet": {
+            "title": "EOB",
+            "claims": [
+                {
+                    "claim_id": "C1",
+                    "services": [{"code": "A", "paid": 1.0}, {"code": "B", "paid": 2.0}],
+                }
+            ],
+        }
+    }
+    actual = {
+        "packet": {
+            "title": "EOB",
+            "claims": [
+                {
+                    "claim_id": "C1",
+                    "services": [{"code": "B", "paid": 2.0}, {"code": "A", "paid": 9.0}],
+                }
+            ],
+        }
+    }
+    rules = [
+        _rule("packet.title", "EOB"),
+        _rule("packet.claims[0].claim_id", "C1"),
+        _rule("packet.claims[0].services[0].code", "A"),
+        _rule("packet.claims[0].services[0].paid", 1.0),
+        _rule("packet.claims[0].services[1].code", "B"),
+        _rule("packet.claims[0].services[1].paid", 2.0),
+    ]
+    uni = compute_unified_evidence_metrics(expected, actual, rules, [], schema)
+    arr = ArrayRecordMatchMetric().compute(expected=expected, actual=actual, data_schema=schema)
+    assert _val(uni, "extract_unified_value_recall") == 5 / 6
+    assert _val(uni, "extract_unified_value_precision") == 5 / 6
+    # No top-level array, so array_record does not emit. Unified still walks the
+    # nested claims/services arrays.
+    assert arr == []
+
+
+def test_array_records_with_nested_object_and_nested_object_array() -> None:
+    """Array of records whose columns mix a nested object and a nested object-array."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "rows": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": ["string", "null"]},
+                        "addr": {
+                            "type": "object",
+                            "properties": {
+                                "city": {"type": ["string", "null"]},
+                                "geo": {
+                                    "type": "object",
+                                    "properties": {
+                                        "lat": {"type": ["string", "null"]},
+                                        "lon": {"type": ["string", "null"]},
+                                    },
+                                },
+                            },
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {"name": {"type": ["string", "null"]}},
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    }
+    expected = {
+        "rows": [
+            {
+                "id": "1",
+                "addr": {"city": "A", "geo": {"lat": "1", "lon": "2"}},
+                "tags": [{"name": "x"}, {"name": "y"}],
+            }
+        ]
+    }
+    actual = {
+        "rows": [
+            {
+                "id": "1",
+                "addr": {"city": "A", "geo": {"lat": "1", "lon": "WRONG"}},
+                "tags": [{"name": "y"}, {"name": "x"}],
+            }
+        ]
+    }
+    rules = [
+        _rule("rows[0].id", "1"),
+        _rule("rows[0].addr.city", "A"),
+        _rule("rows[0].addr.geo.lat", "1"),
+        _rule("rows[0].addr.geo.lon", "2"),
+        _rule("rows[0].tags[0].name", "x"),
+        _rule("rows[0].tags[1].name", "y"),
+    ]
+    uni = compute_unified_evidence_metrics(expected, actual, rules, [], schema)
+    arr = ArrayRecordMatchMetric().compute(expected=expected, actual=actual, data_schema=schema)
+    # id, city, lat match; lon misses; tags Hungarian-match both names.
+    assert _val(uni, "extract_unified_value_recall") == 5 / 6
+    assert _val(uni, "extract_unified_value_precision") == 5 / 6
+    # array_record: id matches; addr and tags are opaque mismatches → 1/3.
+    assert _val(arr, "array_record_recall") == 1 / 3
+    assert _val(uni, "extract_unified_value_recall") > _val(arr, "array_record_recall")
+
+
 # ------------------------------------------------------------- grounding
 def _bbox_rules(expected: dict[str, Any], page: int, bbox: list[float]) -> list[ExtractFieldTestRule]:
     rules = [_rule("as_of", expected.get("as_of"))]
@@ -342,6 +601,21 @@ def test_grounded_requires_matching_bbox() -> None:
     assert _val(uni_bad, "extract_unified_grounded_recall") == 0.0
 
 
+def test_indexers_emit_validated_xywh_tuples() -> None:
+    box = [0.1, 0.2, 0.3, 0.4, 99.0]
+    rules = [_rule("as_of", "x", page=1, bbox=box)]
+    _, ev_boxes, _, *_ = build_rule_indexes(rules)
+    pred_boxes, _ = index_citations([{"field_path": "as_of", "page": 1, "bbox": box}])
+    assert ev_boxes["as_of"] == [(1, (0.1, 0.2, 0.3, 0.4))]
+    assert pred_boxes["as_of"] == [(1, (0.1, 0.2, 0.3, 0.4))]
+
+
+def test_iou_xywh_clamps_identical_non_dyadic_boxes_to_one() -> None:
+    box = (0.1, 0.2, 0.3, 0.4)
+    assert iou_xywh(box, box) == 1.0
+    assert iou_xywh(box, (0.9, 0.9, 0.05, 0.05)) == 0.0
+
+
 def test_no_citations_yields_zero_grounded() -> None:
     # GT carries bboxes (grounding IS applicable) but the prediction emits no
     # citation: a real grounding miss -> grounded F1 is emitted as 0.0.
@@ -357,7 +631,9 @@ def test_no_gt_bbox_omits_grounded_metrics() -> None:
     # When the ground truth carries NO evidence bbox, grounding is undefined:
     # the *_grounded_* metrics are omitted entirely (so the runner excludes the
     # document from the grounded average) even if the prediction emits boxes.
-    # The *_value_* metrics are unaffected.
+    # The *_value_* metrics are unaffected. This is the fix for a dataset whose
+    # GT lacks bboxes scoring a misleading ~0 grounded F1 instead of being
+    # excluded.
     expected = {"as_of": None, "holdings": [{"security": "AAA", "coupon": 1.0, "note": "n"}]}
     actual = {"as_of": None, "holdings": [{"security": "AAA", "coupon": 1.0, "note": "n"}]}
     rules = _leaf_rules_single(expected)  # no bbox on any GT evidence
@@ -495,7 +771,7 @@ def test_no_gt_page_omits_page_metrics() -> None:
 
 def test_nested_grounding_survives_outer_array_reorder() -> None:
     # Regression for the gt/pred path bug: when the outer object-array is
-    # reordered, nested-record citations must be looked up at the *matched
+    # reordered, nested object-array citations must be looked up at the *matched
     # predicted* index, not the GT index. With correct citations on the actual
     # prediction paths, grounded recall must stay 1.0.
     schema = {
@@ -600,7 +876,7 @@ def test_extract_evaluator_emits_unified_metrics() -> None:
 # ----------------------------------------- exact-row peel is pairing-safe only
 # The exact-row peel preserves array_record's value score (pairing-independent:
 # correct == n_pairs*k - total_cost). But the unified score is *pairing-sensitive*
-# whenever it recurses into nested sub-records or scores per-cell grounding, since
+# whenever it recurses into nested object arrays or scores per-cell grounding, since
 # both key off the matched predicted index. There the peel could select a
 # different (equal-cost) pairing than the full assignment and shift grounded /
 # nested true positives, so it must fall back to full assignment.
@@ -642,13 +918,26 @@ _NESTED_PEEL_SCHEMA: dict[str, Any] = {
 def _spy_on_peel(monkeypatch: Any) -> list[list[str]]:
     """Record the cost-subfields each exact-row peel call aligned on."""
     calls: list[list[str]] = []
-    original = unified_evidence_metric._peel_exact_row_matches
+    original = unified_evidence_metric.peel_exact_row_matches
 
-    def _spy(act_rows: Any, exp_rows: Any, subfields: Any, fuzzy: Any) -> Any:
+    def _spy(
+        act_rows: Any,
+        exp_rows: Any,
+        *,
+        subfields: Any,
+        fuzzy_field_thresholds: Any,
+        field_schemas: Any = None,
+    ) -> Any:
         calls.append(list(subfields))
-        return original(act_rows, exp_rows, subfields, fuzzy)
+        return original(
+            act_rows,
+            exp_rows,
+            subfields=subfields,
+            fuzzy_field_thresholds=fuzzy_field_thresholds,
+            field_schemas=field_schemas,
+        )
 
-    monkeypatch.setattr(unified_evidence_metric, "_peel_exact_row_matches", _spy)
+    monkeypatch.setattr(unified_evidence_metric, "peel_exact_row_matches", _spy)
     return calls
 
 
@@ -659,13 +948,13 @@ def test_exact_peel_used_for_flat_ungrounded_arrays(monkeypatch: Any) -> None:
     assert ["id", "value"] in calls, "flat un-grounded arrays must keep the fast exact-row peel"
 
 
-def test_exact_peel_skipped_for_nested_record_subfields(monkeypatch: Any) -> None:
+def test_exact_peel_skipped_for_object_array_subfields(monkeypatch: Any) -> None:
     calls = _spy_on_peel(monkeypatch)
     rows = [{"id": "A", "kids": [{"v": "x"}]}, {"id": "B", "kids": [{"v": "y"}]}]
     compute_unified_evidence_metrics({"rows": rows}, {"rows": rows}, [], [], _NESTED_PEEL_SCHEMA)
-    # The outer array (identity cell "id") has nested sub-records, so its
+    # The outer array (identity cell "id") has a nested object array, so its
     # alignment must use full assignment -- the peel must not see ["id"].
-    assert ["id"] not in calls, "outer array with sub-records must use full assignment"
+    assert ["id"] not in calls, "outer array with object-array subfields must use full assignment"
     # The inner flat "kids" arrays are opaque-cell-only, so they still peel.
     assert ["v"] in calls, "flat inner sub-arrays should still use the fast peel"
 
@@ -695,7 +984,7 @@ def test_exact_peel_skipped_when_cell_grounding_present(monkeypatch: Any) -> Non
     assert calls == [], "per-cell grounding makes scoring pairing-sensitive; must use full assignment"
 
 
-def test_nested_record_full_assignment_scores_perfect_match() -> None:
+def test_object_array_full_assignment_scores_perfect_match() -> None:
     # Sanity: the full-assignment fallback still scores a perfect nested match.
     rows = [{"id": "A", "kids": [{"v": "x"}]}, {"id": "B", "kids": [{"v": "y"}]}]
     uni = compute_unified_evidence_metrics({"rows": rows}, {"rows": rows}, [], [], _NESTED_PEEL_SCHEMA)
@@ -960,8 +1249,8 @@ def test_giant_grounded_array_skips_grounding_value_exact_and_peels(monkeypatch:
 
 
 def test_giant_threshold_does_not_touch_nested_or_below_threshold(monkeypatch: Any) -> None:
-    """The skip must not fire for arrays with sub-records (peel would shift
-    nested TP), nor below the threshold."""
+    """The skip must not fire for arrays with nested object arrays (peel would shift
+    nested TP -- the #1537 hazard), nor below the threshold."""
     box = [0.0, 0.0, 10.0, 10.0]
     expected = {"as_of": None, "holdings": [{"security": "A", "coupon": 1.0, "note": "n"}]}
     rules = _bbox_rules(expected, page=1, bbox=box)
@@ -971,7 +1260,7 @@ def test_giant_threshold_does_not_touch_nested_or_below_threshold(monkeypatch: A
     assert _val(kept, "extract_unified_grounded_f1") == 1.0
     assert next(m for m in kept if m.metric_name == "extract_unified_value_f1").metadata["grounded_incomplete"] is False
 
-    # A nested-record array over the threshold must NOT skip (stays grounded via
+    # An object-array nested over the threshold must NOT skip (stays grounded via
     # full assignment) because the peel there could shift nested TP.
     monkeypatch.setattr(unified_evidence_metric, "_GROUNDED_MAX_CELLS", 1)
     nested = {"rows": [{"id": "A", "kids": [{"v": "x"}]}]}
@@ -984,5 +1273,16 @@ def test_giant_threshold_does_not_touch_nested_or_below_threshold(monkeypatch: A
         {"field_path": "rows[0].kids[0].v", "page": 1, "bbox": box},
     ]
     out = compute_unified_evidence_metrics(nested, nested, nrules, ncits, _NESTED_PEEL_SCHEMA)
-    # Outer array has sub-records -> not eligible for the skip -> grounding kept.
+    # Outer array has an object-array subfield -> not eligible for the skip -> grounding kept.
     assert _val(out, "extract_unified_grounded_f1") == 1.0
+
+
+_HEADLINE_UNIFIED_PREFIXES = (
+    "extract_unified_value_",
+    "extract_unified_page_",
+    "extract_unified_grounded_",
+)
+
+
+def _is_headline_unified(name: str) -> bool:
+    return name.startswith(_HEADLINE_UNIFIED_PREFIXES) and "_word_" not in name and "_structural_" not in name
