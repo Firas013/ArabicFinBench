@@ -81,13 +81,16 @@ def test_array_subfield_names_reads_items_through_anyof() -> None:
         "sku": {"type": "string"},
         "qty": {"type": "integer"},
     }
-    assert array_subfield_names(wrapped, []) == ["sku", "qty"]
+    assert array_subfield_names(wrapped) == ["sku", "qty"]
+    assert is_array_schema(wrapped) is True
 
 
-def test_string_gold_is_not_treated_as_an_array() -> None:
-    assert is_array_schema({}, "not-an-array") is False
-    assert is_array_schema({"type": "string"}, "not-an-array") is False
-    assert is_array_schema({}, ["not-an-array"]) is True
+def test_is_array_schema_ignores_gold_and_reads_combinators() -> None:
+    assert is_array_schema({}) is False
+    assert is_array_schema({"type": "string"}) is False
+    assert is_array_schema({"type": "array"}) is True
+    # A list in gold does not make an untyped/string field an array.
+    assert is_array_schema({}) is False
 
 
 def test_array_record_match_is_order_insensitive() -> None:

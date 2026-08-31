@@ -82,7 +82,6 @@ from extract_bench.evaluation.metrics.extract.array_record_match_metric import (
     as_rows,
     cell_match,
     is_array_schema,
-    is_value_sequence,
     mismatch_cost_matrix,
     normalize_dates_deep,
     normalize_ws,
@@ -291,42 +290,31 @@ def is_object_array_schema(field_schema: Any) -> bool:
     return "object" in types
 
 
-def _row_has_object_list(rows: Sequence[Any], sub: str) -> bool:
-    for row in rows:
-        if isinstance(row, Mapping):
-            value = row.get(sub)
-            if is_value_sequence(value) and len(value) > 0 and isinstance(value[0], Mapping):
+def is_object_schema(field_schema: Any) -> bool:
+    """True when JSON Schema describes an object (incl. combinators)."""
+    if not isinstance(field_schema, Mapping):
+        return False
+    if len(schema_properties(field_schema)) > 0:
+        return True
+    raw = field_schema.get("type")
+    types = raw if isinstance(raw, list) else [raw]
+    if "object" in types:
+        return True
+    for key in ("anyOf", "oneOf", "allOf"):
+        for alt in field_schema.get(key) or []:
+            if is_object_schema(alt):
                 return True
     return False
 
 
-def is_object_array_subfield(
-    rows: Sequence[Any],
-    sub: str,
-    extra_rows: Sequence[Any] | None = None,
-    field_schema: Any = None,
-) -> bool:
-    """True when ``sub`` is a nested object-array (Hungarian at the next depth).
-
-    Distinct from ``is_object_subfield`` (a single dict on the row). Scalar
-    lists stay opaque cells. Empty or null gold still counts when the item
-    schema is an object or the prediction already holds a list of objects —
-    otherwise invented rows collapse to one opaque miss.
-    """
-    if is_object_array_schema(field_schema):
-        return True
-    if _row_has_object_list(rows, sub):
-        return True
-    return extra_rows is not None and _row_has_object_list(extra_rows, sub)
+def is_object_array_subfield(field_schema: Any) -> bool:
+    """True when the field schema is a nested object-array (Hungarian at the next depth)."""
+    return is_object_array_schema(field_schema)
 
 
-def is_object_subfield(exp_rows: Sequence[Any], act_rows: Sequence[Any], sub: str) -> bool:
-    """True when ``sub`` is a dict on any gold or pred row (scored via ``_score_node``)."""
-    for rows in (exp_rows, act_rows):
-        for row in rows:
-            if isinstance(row, Mapping) and isinstance(row.get(sub), Mapping):
-                return True
-    return False
+def is_object_subfield(field_schema: Any) -> bool:
+    """True when the field schema is a dict (scored via ``_score_node``)."""
+    return is_object_schema(field_schema)
 
 
 def iou_xywh(a: BBox, b: BBox) -> float:
@@ -433,22 +421,24 @@ class Scorer:
         missing partner as implicit ``null`` children and can *match* gold
         nulls. There is no partner row here, so every leaf is a one-sided miss.
         """
-        if isinstance(value, Mapping):
-            props = schema_properties(schema)
-            keys = sorted(value.keys())
-            if len(keys) > 0:
-                for key in keys:
-                    child = f"{path}.{key}" if path else key
-                    self._count_subtree(child, value[key], props.get(key, {}), c, expected=expected)
+        if is_array_schema(schema):
+            if is_object_array_schema(schema):
+                subfield_names = array_subfield_names(schema)
+                item_sch = array_item_properties(schema)
+                for i, row in enumerate(as_rows(value)):
+                    rd = row if isinstance(row, Mapping) else {}
+                    for s in subfield_names:
+                        self._count_subtree(f"{path}[{i}].{s}", rd.get(s), item_sch.get(s, {}), c, expected=expected)
                 return
-        if is_value_sequence(value) and any(isinstance(r, Mapping) for r in value):
-            subfield_names = array_subfield_names(schema, value)
-            item_sch = array_item_properties(schema)
-            for i, row in enumerate(value):
-                rd = row if isinstance(row, Mapping) else {}
-                for s in subfield_names:
-                    self._count_subtree(f"{path}[{i}].{s}", rd.get(s), item_sch.get(s, {}), c, expected=expected)
-        elif expected:
+        elif is_object_schema(schema):
+            props = schema_properties(schema)
+            if len(props) > 0:
+                rd = value if isinstance(value, Mapping) else {}
+                for key, child_schema in props.items():
+                    child = f"{path}.{key}" if path else key
+                    self._count_subtree(child, rd.get(key), child_schema, c, expected=expected)
+                return
+        if expected:
             c.expected += 1
             self._note_grounded_expected(path, c)
             if self._ev_pages.get(path):
@@ -481,20 +471,16 @@ class Scorer:
         # threading both is what keeps nested grounding correct after a remap.
         exp_rows = as_rows(exp_rows)
         act_rows = as_rows(act_rows)
-        subfield_names = array_subfield_names(schema, exp_rows)
+        subfield_names = array_subfield_names(schema)
         if len(subfield_names) == 0:
             return
         item_sch = array_item_properties(schema)
         # List-of-objects subfields recurse with another Hungarian pass.
         # Dict-valued subfields recurse via ``_score_node`` (same as root).
         # Scalars and scalar lists stay opaque cells.
-        object_array_names = [
-            s
-            for s in subfield_names
-            if is_object_array_subfield(exp_rows, s, extra_rows=act_rows, field_schema=item_sch.get(s, {}))
-        ]
+        object_array_names = [s for s in subfield_names if is_object_array_subfield(item_sch.get(s, {}))]
         object_names = [
-            s for s in subfield_names if s not in object_array_names and is_object_subfield(exp_rows, act_rows, s)
+            s for s in subfield_names if s not in object_array_names and is_object_subfield(item_sch.get(s, {}))
         ]
         cell_names = [s for s in subfield_names if s not in object_array_names and s not in object_names]
         # Opaque-cell denominators: array_record-exact (rows x cell subfields).
@@ -731,23 +717,21 @@ class Scorer:
     def _score_node(
         self, gt_path: str, pred_path: str, ev: Any, av: Any, schema: Mapping[str, Any], c: _Counts
     ) -> None:
-        if is_array_schema(schema, ev):
+        if is_array_schema(schema):
             self._score_array(gt_path, pred_path, ev, av, schema, c)
             return
-        ev_obj = isinstance(ev, Mapping)
-        av_obj = isinstance(av, Mapping)
-        if ev_obj or av_obj:
+        if is_object_schema(schema):
             props = schema_properties(schema)
-            ed = ev if ev_obj else {}
-            ad = av if av_obj else {}
-            keys = sorted(set(ed) | set(ad))
+            ed = ev if isinstance(ev, Mapping) else {}
+            ad = av if isinstance(av, Mapping) else {}
+            keys = list(props.keys())
             if len(keys) == 0:
                 self._score_scalar_cell(gt_path, pred_path, ev, av, c)
                 return
             for key in keys:
                 child_gt = f"{gt_path}.{key}" if gt_path else key
                 child_pred = f"{pred_path}.{key}" if pred_path else key
-                self._score_node(child_gt, child_pred, ed.get(key), ad.get(key), props.get(key, {}), c)
+                self._score_node(child_gt, child_pred, ed.get(key), ad.get(key), props[key], c)
             return
         self._score_scalar_cell(gt_path, pred_path, ev, av, c)
 
