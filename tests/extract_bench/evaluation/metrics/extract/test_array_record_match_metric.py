@@ -85,6 +85,35 @@ def test_array_subfield_names_reads_items_through_anyof() -> None:
     assert is_array_schema(wrapped) is True
 
 
+def test_array_record_scores_ref_item_schema() -> None:
+    """``items: {$ref: #/$defs/...}`` must still expand columns (same inliner as unified)."""
+    schema = {
+        "type": "object",
+        "$defs": {
+            "Line": {
+                "type": "object",
+                "properties": {
+                    "sku": {"type": "string"},
+                    "qty": {"type": "integer"},
+                },
+            }
+        },
+        "properties": {
+            "lines": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/Line"},
+            }
+        },
+    }
+    expected = {"lines": [{"sku": "A", "qty": 1}, {"sku": "B", "qty": 2}]}
+    actual = {"lines": [{"sku": "B", "qty": 2}, {"sku": "A", "qty": 1}]}
+    counts = compute_array_record_match_counts(expected=expected, actual=actual, data_schema=schema)
+    assert counts is not None
+    assert counts.correct == 4
+    assert counts.expected_total == 4
+    assert counts.predicted_total == 4
+
+
 def test_is_array_schema_ignores_gold_and_reads_combinators() -> None:
     assert is_array_schema({}) is False
     assert is_array_schema({"type": "string"}) is False
