@@ -78,7 +78,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 # ``packages`` already carries analysis/static into the wheel; a force-include
 # for the same directory makes hatchling add every asset twice and abort.
-packages = ["src/extract_bench"]
+packages = ["src/extract_bench", "arabicfinbench"]
 
 [tool.ruff]
 line-length = 120
@@ -109,7 +109,7 @@ select = [
 "scripts/bench_table_metrics.py" = ["B023"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["extract_bench"]
+known-first-party = ["arabicfinbench", "extract_bench"]
 
 [tool.mypy]
 python_version = "3.12"
