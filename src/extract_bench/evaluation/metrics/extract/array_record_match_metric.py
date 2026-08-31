@@ -18,6 +18,7 @@ from extract_bench.evaluation.metrics.extract.json_subset_match import (
     normalize_date_string,
 )
 from extract_bench.inference.providers.extract.table_codegen.schema_utils import (
+    resolve_refs,
     schema_items,
     schema_properties,
 )
@@ -533,7 +534,8 @@ def compute_array_record_match_counts(
         expected = normalize_dates_deep(expected)
         actual = normalize_dates_deep(actual)
 
-    schema_props = schema_properties(data_schema or {})
+    resolved = resolve_refs(data_schema) if isinstance(data_schema, Mapping) else {}
+    schema_props = schema_properties(resolved)
     fuzzy = dict(DEFAULT_FUZZY_FIELD_THRESHOLDS if fuzzy_field_thresholds is None else fuzzy_field_thresholds)
 
     correct = 0
