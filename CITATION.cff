@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use ArabicFinBench, please cite it as below, and also cite the upstream ExtractBench harness."
+title: "ArabicFinBench: an evaluation benchmark for Arabic financial-document understanding"
+abstract: >-
+  ArabicFinBench evaluates Arabic financial-document understanding along three
+  separately reported axes - Parse, Extract, and Finance (P/E/F) - which are
+  never combined into a single score. It is a fork of the ExtractBench harness.
+type: software
+version: 0.1.0
+date-released: "2026-08-31"
+license: Apache-2.0
+repository-code: "https://github.com/Firas013/ArabicFinBench"
+url: "https://github.com/Firas013/ArabicFinBench"
+keywords:
+  - arabic
+  - finance
+  - benchmark
+  - document-understanding
+  - information-extraction
+authors:
+  - family-names: "<FAMILY-NAME>"
+    given-names: "<GIVEN-NAME>"
+    affiliation: "<AFFILIATION>"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+references:
+  - type: software
+    title: "ExtractBench"
+    abstract: "Schema-guided document extraction benchmark; upstream harness forked by ArabicFinBench."
+    license: Apache-2.0
+    repository-code: "https://github.com/run-llama/ExtractBench"
+    authors:
+      - name: "LlamaIndex (run-llama)"

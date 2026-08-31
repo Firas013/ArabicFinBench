@@ -225,3 +225,12 @@ data/
 !src/extract_bench/data/
 output/
 results/
+
+# --- ArabicFinBench additions ---
+# Upstream ignores "data/" at any depth, which would silently swallow
+# arabicfinbench/data/ too. Keep source corpora out of git (licensing), but
+# track the directory stub so the documented layout survives a fresh clone.
+!arabicfinbench/data/
+arabicfinbench/data/*
+!arabicfinbench/data/.gitkeep
+!arabicfinbench/data/README.md
