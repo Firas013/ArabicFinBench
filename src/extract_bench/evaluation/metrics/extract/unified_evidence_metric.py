@@ -92,6 +92,7 @@ from extract_bench.evaluation.metrics.extract.array_record_match_metric import (
 from extract_bench.evaluation.metrics.extract.json_subset_match import normalize_date_string
 from extract_bench.inference.providers.extract.table_codegen.schema_utils import (
     resolve_refs,
+    schema_items,
     schema_properties,
 )
 from extract_bench.schemas.evaluation import MetricValue
@@ -276,18 +277,47 @@ def path_leaf(path: str) -> str:
     return path.rsplit(".", 1)[-1].split("[", 1)[0]
 
 
-def is_object_array_subfield(rows: Sequence[Any], sub: str) -> bool:
-    """True when ``sub`` is a list of objects on any row (nested Hungarian).
+def is_object_array_schema(field_schema: Any) -> bool:
+    """True when JSON Schema describes an array of objects (incl. combinators)."""
+    if not isinstance(field_schema, Mapping):
+        return False
+    if len(array_item_properties(field_schema)) > 0:
+        return True
+    items = schema_items(field_schema)
+    if not isinstance(items, Mapping):
+        return False
+    raw = items.get("type")
+    types = raw if isinstance(raw, list) else [raw]
+    return "object" in types
 
-    Distinct from ``is_object_subfield`` (a single dict on the row). Scalar
-    lists stay opaque cells.
-    """
+
+def _row_has_object_list(rows: Sequence[Any], sub: str) -> bool:
     for row in rows:
         if isinstance(row, Mapping):
             value = row.get(sub)
             if is_value_sequence(value) and len(value) > 0 and isinstance(value[0], Mapping):
                 return True
     return False
+
+
+def is_object_array_subfield(
+    rows: Sequence[Any],
+    sub: str,
+    extra_rows: Sequence[Any] | None = None,
+    field_schema: Any = None,
+) -> bool:
+    """True when ``sub`` is a nested object-array (Hungarian at the next depth).
+
+    Distinct from ``is_object_subfield`` (a single dict on the row). Scalar
+    lists stay opaque cells. Empty or null gold still counts when the item
+    schema is an object or the prediction already holds a list of objects —
+    otherwise invented rows collapse to one opaque miss.
+    """
+    if is_object_array_schema(field_schema):
+        return True
+    if _row_has_object_list(rows, sub):
+        return True
+    return extra_rows is not None and _row_has_object_list(extra_rows, sub)
 
 
 def is_object_subfield(exp_rows: Sequence[Any], act_rows: Sequence[Any], sub: str) -> bool:
@@ -458,7 +488,11 @@ class Scorer:
         # List-of-objects subfields recurse with another Hungarian pass.
         # Dict-valued subfields recurse via ``_score_node`` (same as root).
         # Scalars and scalar lists stay opaque cells.
-        object_array_names = [s for s in subfield_names if is_object_array_subfield(exp_rows, s)]
+        object_array_names = [
+            s
+            for s in subfield_names
+            if is_object_array_subfield(exp_rows, s, extra_rows=act_rows, field_schema=item_sch.get(s, {}))
+        ]
         object_names = [
             s for s in subfield_names if s not in object_array_names and is_object_subfield(exp_rows, act_rows, s)
         ]

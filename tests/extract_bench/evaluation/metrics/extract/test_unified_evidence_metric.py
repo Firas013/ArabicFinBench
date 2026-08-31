@@ -429,6 +429,56 @@ def test_object_array_subfield_gets_per_child_credit() -> None:
     assert _val(uni, "extract_unified_value_recall") > _val(arr, "array_record_recall")
 
 
+def test_empty_gt_object_array_expands_predicted_children() -> None:
+    """Empty (or null) gold object-array still expands invented predicted rows.
+
+    Schema says ``equipment_adjustments`` is an array of objects. Gold is ``[]``;
+    the prediction invents two rows / four child values. Those must be four
+    precision misses, not one opaque cell.
+    """
+    schema = {
+        "type": "object",
+        "properties": {
+            "vehicles": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "year": {"type": ["string", "null"]},
+                        "equipment_adjustments": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": ["string", "null"]},
+                                    "amount": {"type": ["number", "null"]},
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    }
+    expected_empty = {"vehicles": [{"year": "2020", "equipment_adjustments": []}]}
+    expected_null = {"vehicles": [{"year": "2020", "equipment_adjustments": None}]}
+    actual = {
+        "vehicles": [
+            {
+                "year": "2020",
+                "equipment_adjustments": [
+                    {"name": "A", "amount": 1},
+                    {"name": "B", "amount": 2},
+                ],
+            }
+        ]
+    }
+    for expected in (expected_empty, expected_null):
+        uni = compute_unified_evidence_metrics(expected, actual, [], [], schema)
+        assert _val(uni, "extract_unified_value_recall") == 1.0
+        assert _val(uni, "extract_unified_value_precision") == 0.2
+
+
 def test_object_wrapping_array_of_records_with_nested_object_arrays() -> None:
     """Root object → child object → array of records → nested object-array.
 
