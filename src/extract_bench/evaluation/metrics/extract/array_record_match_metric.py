@@ -423,14 +423,25 @@ def as_rows(value: Any) -> list[Any]:
     return list(value) if is_value_sequence(value) else []
 
 
-def is_array_schema(field_schema: Mapping[str, Any], expected_value: Any) -> bool:
-    """True when this field is an array in the schema or the gold value is a list.
+def is_array_schema(field_schema: Any) -> bool:
+    """True when JSON Schema describes an array (incl. ``anyOf`` / ``oneOf`` / ``allOf``).
 
-    Does not walk ``anyOf`` / ``oneOf``; a combinator-wrapped array is still
-    detected from the gold list. Strings are not treated as arrays.
+    Combinator-wrapped arrays (``anyOf: [{type: array, items: ...}, {type: null}]``)
+    have no top-level ``type: array``; walk the same combinators as ``schema_items``.
+    Gold/pred values are not consulted — a list in the extraction does not make
+    a string field an array.
     """
-    field_type = field_schema.get("type")
-    return field_type == "array" or is_value_sequence(expected_value)
+    if not isinstance(field_schema, Mapping):
+        return False
+    raw = field_schema.get("type")
+    types = raw if isinstance(raw, list) else [raw]
+    if "array" in types or isinstance(field_schema.get("items"), dict):
+        return True
+    for key in ("anyOf", "oneOf", "allOf"):
+        for alt in field_schema.get(key) or []:
+            if is_array_schema(alt):
+                return True
+    return False
 
 
 def array_item_properties(field_schema: Any) -> Mapping[str, Any]:
@@ -446,26 +457,9 @@ def array_item_properties(field_schema: Any) -> Mapping[str, Any]:
     return schema_properties(schema_items(field_schema))
 
 
-def array_subfield_names(
-    field_schema: Mapping[str, Any],
-    expected_rows: Any,
-) -> Sequence[str]:
-    """Column names for one array of objects.
-
-    Prefer schema property order from ``array_item_properties``. If the schema
-    has no item properties (untyped list, or rows that are not objects), fall
-    back to the sorted union of gold row keys.
-    """
-    item_props = array_item_properties(field_schema)
-    if len(item_props) > 0:
-        return list(item_props.keys())
-    if is_value_sequence(expected_rows):
-        keys: set[str] = set()
-        for row in expected_rows:
-            if isinstance(row, Mapping):
-                keys.update(row.keys())
-        return sorted(keys)
-    return []
+def array_subfield_names(field_schema: Mapping[str, Any]) -> Sequence[str]:
+    """Column names for one array of objects, from ``items.properties`` only."""
+    return list(array_item_properties(field_schema).keys())
 
 
 def _score_array(
@@ -554,8 +548,8 @@ def compute_array_record_match_counts(
         field_schema = schema_props.get(field, {})
         expected_value = expected.get(field)
         actual_value = actual.get(field)
-        if is_array_schema(field_schema, expected_value):
-            subfield_names = array_subfield_names(field_schema, expected_value)
+        if is_array_schema(field_schema):
+            subfield_names = array_subfield_names(field_schema)
             if len(subfield_names) == 0:
                 continue
             field_schemas = array_item_properties(field_schema)

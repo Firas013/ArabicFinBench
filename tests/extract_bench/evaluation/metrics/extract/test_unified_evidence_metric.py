@@ -479,6 +479,27 @@ def test_empty_gt_object_array_expands_predicted_children() -> None:
         assert _val(uni, "extract_unified_value_precision") == 0.2
 
 
+def test_gold_list_does_not_make_a_string_field_an_array() -> None:
+    """Eval shape comes from schema, not the gold value's Python type."""
+    schema = {"type": "object", "properties": {"note": {"type": ["string", "null"]}}}
+    expected = {"note": [{"text": "a"}, {"text": "b"}]}
+    actual = {"note": [{"text": "a"}, {"text": "b"}]}
+    uni = compute_unified_evidence_metrics(expected, actual, [], [], schema)
+    # One opaque string-field cell (the lists compare equal), not 2 Hungarian rows.
+    assert _val(uni, "extract_unified_value_recall") == 1.0
+    assert _val(uni, "extract_unified_value_precision") == 1.0
+
+
+def test_gold_dict_does_not_make_a_string_field_an_object() -> None:
+    schema = {"type": "object", "properties": {"note": {"type": ["string", "null"]}}}
+    expected = {"note": {"text": "a"}}
+    actual = {"note": {"text": "b"}}
+    uni = compute_unified_evidence_metrics(expected, actual, [], [], schema)
+    # One opaque miss, not a child-cell recurse into ``text``.
+    assert _val(uni, "extract_unified_value_recall") == 0.0
+    assert _val(uni, "extract_unified_value_precision") == 0.0
+
+
 def test_object_wrapping_array_of_records_with_nested_object_arrays() -> None:
     """Root object → child object → array of records → nested object-array.
 
