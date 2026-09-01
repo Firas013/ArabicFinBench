@@ -6,6 +6,8 @@ this package are logged loudly instead of being skipped.
 """
 
 import importlib
+
+from extract_bench.inference.providers import registry
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,9 @@ for _mod in _PROVIDER_MODULES:
     try:
         importlib.import_module(f"extract_bench.inference.providers.extract.{_mod}")
     except ImportError as exc:
+        # Recorded so a later "no provider registered" error can name the real
+        # cause (e.g. a missing PIL) instead of hiding it.
+        registry.record_import_failure(f"extract.{_mod}", exc)
         # A missing third-party SDK is expected on a core-only install; a
         # failure originating inside this package is a packaging bug and must
         # be loud, not silently skipped.

@@ -18,5 +18,9 @@ of the Apache License 2.0:
     three axes separate rather than reducing them to a single score.
   - Adjusted .gitignore so the overlay layout survives a fresh clone while
     source corpora remain untracked.
+  - Modified src/extract_bench/inference/providers/ (registry.py and the
+    parse/ and extract/ package initialisers) to record provider-module
+    import failures and name them in the "no provider registered" error,
+    instead of silently swallowing the cause.
 
 Upstream code retains its original copyright and license. See LICENSE.

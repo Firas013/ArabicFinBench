@@ -1,6 +1,8 @@
 """Parse providers — imported lazily to avoid requiring all SDKs."""
 
 import importlib
+
+from extract_bench.inference.providers import registry
 import logging
 
 logger = logging.getLogger(__name__)
@@ -56,5 +58,8 @@ _PROVIDER_MODULES = [
 for _mod in _PROVIDER_MODULES:
     try:
         importlib.import_module(f"extract_bench.inference.providers.parse.{_mod}")
-    except ImportError:
+    except ImportError as exc:
+        # Recorded so a later "no provider registered" error can name the real
+        # cause (e.g. a missing PIL) instead of hiding it.
+        registry.record_import_failure(f"parse.{_mod}", exc)
         logger.debug("Skipping parse provider %s (missing dependency)", _mod)
