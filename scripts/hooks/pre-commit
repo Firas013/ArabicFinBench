@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Refuse to commit corpus documents.
+#
+# Arabic financial filings carry per-publisher redistribution terms that this
+# repository's licence cannot represent, and git history is permanent — a
+# document committed once stays recoverable even after a later deletion. A
+# marker redaction does not make a private filing public.
+#
+# See arabicfinbench/gt/CONVENTIONS.md section 6. CI enforces the same rule, so
+# skipping this hook does not get a document merged.
+#
+# Install: scripts/install-hooks.sh
+
+set -euo pipefail
+
+# Filings. Never tracked, anywhere — there is no legitimate reason for one to
+# enter this repository.
+DOCS='\.(pdf|docx|jfif)$'
+
+# Scans and page images. A corpus page is indistinguishable from a diagram by
+# extension alone, so these are allowed only where documentation assets live.
+IMAGES='\.(png|jpe?g)$'
+IMAGE_ALLOW='^(docs/|\.github/)'
+
+added=$(git diff --cached --name-only --diff-filter=A)
+staged=$(
+    {
+        printf '%s\n' "$added" | grep -Ei "$DOCS" || true
+        printf '%s\n' "$added" | grep -Ei "$IMAGES" | grep -Ev "$IMAGE_ALLOW" || true
+    } | grep -v '^$' || true
+)
+
+if [ -n "$staged" ]; then
+    echo "ERROR: refusing to commit corpus document(s):" >&2
+    printf '  %s\n' $staged >&2
+    cat >&2 <<'MSG'
+
+Source documents are never committed to this repository. Git history is
+permanent, so this cannot be undone by a later deletion.
+
+  - Keep it local: add the directory to .gitignore
+  - Publish it: via the Hugging Face dataset, and only with confirmed
+    redistribution rights (see arabicfinbench/gt/CONVENTIONS.md section 6)
+
+Override only if you are certain the document is redistributable:
+  git commit --no-verify
+MSG
+    exit 1
+fi

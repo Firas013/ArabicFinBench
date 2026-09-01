@@ -15,6 +15,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The pre-commit hook enforces this locally, but a hook can be skipped
+      # with --no-verify and is not installed in a fresh clone. Git history is
+      # permanent, so this check runs before anything else.
+      # See arabicfinbench/gt/CONVENTIONS.md section 6.
+      - name: No corpus documents tracked
+        run: |
+          # Filings are never tracked. Page images are indistinguishable from
+          # diagrams by extension, so they are allowed only under docs/.
+          found=$(
+            {
+              git ls-files | grep -Ei '\.(pdf|docx|jfif)$' || true
+              git ls-files | grep -Ei '\.(png|jpe?g)$' | grep -Ev '^(docs/|\.github/)' || true
+            } | grep -v '^$' || true
+          )
+          if [ -n "$found" ]; then
+            echo "ERROR: corpus document(s) tracked in the repository:" >&2
+            printf '  %s\n' $found >&2
+            echo "See arabicfinbench/gt/CONVENTIONS.md section 6." >&2
+            exit 1
+          fi
+          echo "no corpus documents tracked"
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:

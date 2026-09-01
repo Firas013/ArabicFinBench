@@ -234,3 +234,10 @@ results/
 arabicfinbench/data/*
 !arabicfinbench/data/.gitkeep
 !arabicfinbench/data/README.md
+
+# Private development fixtures. Corpus documents are never committed: Arabic
+# financial filings carry per-publisher redistribution terms, and git history is
+# permanent. Enforced by scripts/hooks/pre-commit and CI.
+# See arabicfinbench/gt/CONVENTIONS.md section 6.
+test_1/
+fixtures_local/
