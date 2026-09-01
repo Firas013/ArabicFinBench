@@ -139,3 +139,73 @@ class TestCanonicalizeMarkup:
 
     def test_empty_input_is_empty(self) -> None:
         assert canonicalize_markup("") == ""
+
+
+class TestParenNegatives:
+    """Accounting negatives: (1,000) and -1,000 are one value, two traditions."""
+
+    def test_bracketed_figure_folds_to_minus(self) -> None:
+        from arabicfinbench.canon import canonicalize
+
+        assert canonicalize("(٤١٥,٦٥٩)") == "-415,659"
+        assert canonicalize("(415,659)") == "-415,659"
+
+    def test_the_two_traditions_agree_after_canon(self) -> None:
+        from arabicfinbench.canon import canonicalize
+
+        assert canonicalize("(٢١,٠٠٠,٠٠٠)") == canonicalize("-21,000,000")
+
+    def test_parenthesised_words_are_not_negated(self) -> None:
+        from arabicfinbench.canon import canonicalize
+
+        out = canonicalize("( شركة ذات مسؤولية محدودة )")
+        assert out.startswith("(") and out.endswith(")")
+
+
+class TestPresentationForms:
+    def test_arabic_presentation_forms_fold_to_base_letters(self) -> None:
+        from arabicfinbench.canon import canonicalize
+
+        # U+FEE3/U+FEE7 presentation forms of م/ن versus the base letters.
+        assert canonicalize("ﻣﻦ") == canonicalize("من")
+
+
+class TestMissingSpaceStaysAnEdit:
+    def test_joined_words_are_not_repaired(self) -> None:
+        # Removing a model's missing-space error would erase an edit, not a
+        # convention. This is a deliberate non-rule.
+        from arabicfinbench.canon import canonicalize
+
+        assert canonicalize("رأسالمال") != canonicalize("رأس المال")
+
+
+class TestTracedRules:
+    def test_fired_rules_are_named(self) -> None:
+        from arabicfinbench.canon import canonicalize_traced
+
+        out, fired = canonicalize_traced("(٤١٥) ريال ، نعم")
+        assert out == "-415 ريال، نعم"
+        assert "text/fold_numerals" in fired
+        assert "text/fold_paren_negatives" in fired
+        assert "text/normalize_spacing" in fired
+
+    def test_canonical_input_fires_nothing(self) -> None:
+        from arabicfinbench.canon import canonicalize_traced
+
+        text = "-415,659 ريال"
+        out, fired = canonicalize_traced(text)
+        assert out == text
+        assert fired == ()
+
+    def test_markup_trace_is_the_union_over_text_nodes(self) -> None:
+        from arabicfinbench.canon import canonicalize_markup_traced
+
+        _, fired = canonicalize_markup_traced("<td>٨٣٩</td><td>(12)</td>")
+        assert "text/fold_numerals" in fired
+        assert "text/fold_paren_negatives" in fired
+
+    def test_canon_version_is_importable_and_pinned(self) -> None:
+        from arabicfinbench.canon import CANON_VERSION
+
+        major, minor, patch = CANON_VERSION.split(".")
+        assert all(part.isdigit() for part in (major, minor, patch))
