@@ -1,0 +1,12 @@
+# Normalise line endings so a checkout from Windows cannot churn every line.
+# The tree is authored on Linux; CRLF conversion produced whole-file diffs
+# with no content change.
+* text=auto eol=lf
+
+# Never touch binary payloads.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.jfif binary
+*.docx binary
