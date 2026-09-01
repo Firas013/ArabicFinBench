@@ -15,13 +15,13 @@ three additions:
    matches its ``expected_output`` value *or any* alternate value declared in
    that leaf's ``evidence[]``. (When a leaf has a single evidence value equal to
    the expected value, this is just ``array_record``.)
-2. **Sub-record recursion.** A list-of-objects subfield (e.g. OFAC
-   ``entities[].aliases``) is recursed into and aligned per sub-row, scoring
-   each of its fields, instead of being compared as one opaque cell.
-   Scalars, scalar lists, and **bare objects stay opaque cells** -- an
-   object-valued cell is scored all-or-nothing, NOT field-by-field, so this is
-   not universal leaf-level scoring for object-valued cells (that would diverge
-   from array_record's structure).
+2. **Object and object-array recursion.** A list-of-objects subfield (e.g. OFAC
+   ``entities[].aliases``) is recursed into and aligned with another Hungarian
+   pass, scoring each of its fields, instead of being compared as one opaque
+   cell. Bare objects (root, nested outside arrays, and objects on array rows)
+   are recursed into and scored per child cell with the same ``.get`` lookup the
+   root object uses; omit vs a gold object is implicit ``null`` children, not
+   one all-or-nothing miss. Scalar lists stay opaque.
 3. **Grounding (bbox + page).** Two parallel sets of counters, both value-gated
    and both nesting under the value score. A cell is *grounded-correct* when the
    value matches AND the prediction's citation has a bbox that overlaps an
@@ -32,7 +32,8 @@ three additions:
    per-cell superset of bbox (a box match requires equal pages, and page
    evidence/claims are supersets of bbox evidence/claims), so the three F1s nest:
    ``value_f1 >= page_f1 >= grounded_f1``. Together ``*_grounded_*`` and
-   ``*_page_*`` form one nested precision/recall/F1 trio.
+   ``*_page_*`` replace the old ``extract_evidence_bbox_*`` and
+   ``extract_evidence_page_*`` families as one nested precision/recall/F1 trio.
    Grounding is only defined where the GT carries the corresponding annotation
    (a page for ``*_page_*``, a bbox for ``*_grounded_*``), on
    BOTH sides of the P/R pair: recall's denominator is the GT cells that carry
@@ -47,11 +48,13 @@ three additions:
    metric (excluded from the dataset average), rather than a 0.0 that would
    punish a document that simply cannot be graded for grounding.
 
-On a document with no object-array subfields and no alternate evidence values,
-the ``*_value_*`` metrics are bit-identical to ``array_record_*`` -- same
-alignment, subfields, cost matrix, and denominators -- with no ``match_by`` rule
-anywhere. Object-array subfields make the value metrics diverge upward (the
-per-sub-record credit array_record cannot give); the ``*_grounded_*`` metrics
+On a document with no object-array subfields, no object-valued cells, and no
+alternate evidence values, the ``*_value_*`` metrics are bit-identical to
+``array_record_*`` -- same alignment, subfields, cost matrix, and denominators
+-- with no ``match_by`` rule anywhere. Object-array subfields and objects
+recursed as child cells
+make the value metrics diverge from array_record (per-child credit); the
+``*_grounded_*`` metrics
 are the other new signal (0 for pipelines that emit no citations *on documents
 whose GT carries bboxes*; omitted entirely on documents whose GT has none).
 Truncation
@@ -63,9 +66,10 @@ pass.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any
+from typing import Any, SupportsFloat
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -73,16 +77,23 @@ from scipy.optimize import linear_sum_assignment
 from extract_bench.evaluation.metrics.extract.array_record_match_metric import (
     DEFAULT_FUZZY_FIELD_THRESHOLDS,
     RESERVED_OUTPUT_KEYS,
-    _array_subfields,
-    _cell_match,
-    _is_array_schema,
-    _mismatch_cost_matrix,
-    _normalize_dates_deep,
-    _normalize_ws,
-    _peel_exact_row_matches,
-    _unwrap_value,
+    array_item_properties,
+    array_subfield_names,
+    as_rows,
+    cell_match,
+    is_array_schema,
+    mismatch_cost_matrix,
+    normalize_dates_deep,
+    normalize_ws,
+    peel_exact_row_matches,
+    unwrap_value,
 )
 from extract_bench.evaluation.metrics.extract.json_subset_match import normalize_date_string
+from extract_bench.inference.providers.extract.table_codegen.schema_utils import (
+    resolve_refs,
+    schema_items,
+    schema_properties,
+)
 from extract_bench.schemas.evaluation import MetricValue
 from extract_bench.test_cases.schema import ExtractFieldTestRule, iter_rule_evidence
 
@@ -97,14 +108,18 @@ _NULL_EQUALS_FALSE = "null_equals_false"
 _PHONE_DIGITS = "phone_digits"
 _LENIENT_DATE = "lenient_date"
 _PUNCTUATION_SPACING = "punctuation_spacing"
-# Above this many cells (GT rows x predicted rows) in one flat array, the
+# Above this many cells (GT rows x predicted rows) in a single flat array, the
 # grounded assignment matrix -- an int16 cost matrix plus scipy's internal
-# float64 copy -- is several GB and a memory-limited runner OOMs building it.
-# Such an array skips grounding entirely (``grounded_incomplete``) rather than
-# scoring it partially, and the value score takes the exact-row peel, which is
-# value-identical for opaque un-grounded cells. Only arrays with no sub-records
-# qualify, so the peel never shifts nested TP. 100M cells keeps the matrix under
-# ~1 GB while sparing every ordinary document.
+# float64 copy -- is several GB, and a memory-limited eval runner OOMs building
+# it. For such an array we SKIP grounding (its bbox metrics), which lets the
+# value score take the exact-row peel that is provably value-identical for
+# opaque un-grounded cells (the pairing the full matrix would have chosen only
+# matters for grounded/nested TP, which we are not scoring). The document then
+# emits NO grounded metric at all (``grounded_incomplete``), rather than a
+# partial grounded score. Only arrays with no nested object or object-array
+# subfields qualify, so the peel
+# never shifts nested TP. ~100M cells keeps the matrix
+# under ~1 GB while sparing every ordinary document.
 _GROUNDED_MAX_CELLS = 100_000_000
 # Everything ``configured_cell_match`` handles; kept equal to the schema's
 # EXTRACT_FIELD_NORMALIZERS vocabulary (guarded by a unit test) so a name can't
@@ -132,6 +147,18 @@ _DIGIT_RE = re.compile(r"\d")
 _SPLIT_YEAR_RE = re.compile(r"\b(19|20)\s+(\d{2})\b")
 _TRAILING_2DIGIT_YEAR_RE = re.compile(r"^(.*[ ,/-])(\d{2})\s*$")
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# Validated COCO xywh after ingest. JSON / Pydantic still carry list[float].
+type BBox = tuple[float, float, float, float]
+type PageBBox = tuple[int, BBox]
+type BoxIndex = dict[str, list[PageBBox]]
+
+
+def _validated_bbox(raw: Sequence[SupportsFloat]) -> BBox | None:
+    """Four COCO xywh floats, or None when the payload is shorter than xywh."""
+    if len(raw) < 4:
+        return None
+    return (float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3]))
 
 
 @lru_cache(maxsize=8192)
@@ -166,11 +193,12 @@ def configured_cell_match(
     expected: Any,
     actual: Any,
     field: str,
+    *,
     fuzzy: dict[str, float],
     normalizers: tuple[str, ...] | None,
 ) -> bool:
-    """``_cell_match`` plus the field's opt-in normalizer fallbacks."""
-    if _cell_match(expected, actual, field, fuzzy):
+    """``cell_match`` plus the field's opt-in normalizer fallbacks."""
+    if cell_match(expected, actual, field, fuzzy_field_thresholds=fuzzy):
         return True
     if not normalizers:
         return False
@@ -187,15 +215,15 @@ def configured_cell_match(
         # Both sides must survive the strip: punctuation-only values ('.' vs
         # ';') would otherwise collapse to '' == '' and match each other.
         if expected_norm and actual_norm:
-            if _cell_match(expected_norm, actual_norm, field, fuzzy):
+            if cell_match(expected_norm, actual_norm, field, fuzzy_field_thresholds=fuzzy):
                 return True
     if _PUNCTUATION_SPACING in normalizers:
         expected_norm = _PUNCT_SPACING_RE.sub(r"\1", expected)
         actual_norm = _PUNCT_SPACING_RE.sub(r"\1", actual)
-        if _cell_match(expected_norm, actual_norm, field, fuzzy):
+        if cell_match(expected_norm, actual_norm, field, fuzzy_field_thresholds=fuzzy):
             return True
     if _CASE_INSENSITIVE in normalizers:
-        if _normalize_ws(expected).casefold() == _normalize_ws(actual).casefold():
+        if normalize_ws(expected).casefold() == normalize_ws(actual).casefold():
             return True
     if _PHONE_DIGITS in normalizers:
         expected_digits = _NON_DIGIT_RE.sub("", expected)
@@ -239,39 +267,79 @@ class _Counts:
     value_incomplete: bool = False  # a giant flat array skipped the residual value matrix -> value is a lower bound
 
 
-def _is_record_subfield(rows: list[Any], sub: str) -> bool:
-    """True when a subfield holds a list of objects in any row (a real sub-record).
+def path_leaf(path: str) -> str:
+    """Last field name on an extract path, with a trailing array index stripped.
 
-    Scalar lists (footnote markers, tag strings) and bare objects are NOT
-    sub-records: they stay opaque cells scored exactly as array_record does, so
-    a doc with no object-array subfields reduces to array_record bit-for-bit.
+    ``holdings[0].security`` → ``security``; ``rows[2]`` → ``rows``. Used as the
+    ``field`` key for fuzzy / cell-match lookup when scoring a scalar at ``path``.
     """
-    for row in rows:
-        if isinstance(row, dict):
-            value = row.get(sub)
-            if isinstance(value, list) and value and isinstance(value[0], dict):
+    return path.rsplit(".", 1)[-1].split("[", 1)[0]
+
+
+def is_object_array_schema(field_schema: Any) -> bool:
+    """True when JSON Schema describes an array of objects (incl. combinators)."""
+    if not isinstance(field_schema, Mapping):
+        return False
+    if len(array_item_properties(field_schema)) > 0:
+        return True
+    items = schema_items(field_schema)
+    if not isinstance(items, Mapping):
+        return False
+    raw = items.get("type")
+    types = raw if isinstance(raw, list) else [raw]
+    return "object" in types
+
+
+def is_object_schema(field_schema: Any) -> bool:
+    """True when JSON Schema describes an object (incl. combinators)."""
+    if not isinstance(field_schema, Mapping):
+        return False
+    if len(schema_properties(field_schema)) > 0:
+        return True
+    raw = field_schema.get("type")
+    types = raw if isinstance(raw, list) else [raw]
+    if "object" in types:
+        return True
+    for key in ("anyOf", "oneOf", "allOf"):
+        for alt in field_schema.get(key) or []:
+            if is_object_schema(alt):
                 return True
     return False
 
 
-def _iou_xywh(a: list[float], b: list[float]) -> float:
-    ax, ay, aw, ah = a[0], a[1], a[2], a[3]
-    bx, by, bw, bh = b[0], b[1], b[2], b[3]
+def is_object_array_subfield(field_schema: Any) -> bool:
+    """True when the field schema is a nested object-array (Hungarian at the next depth)."""
+    return is_object_array_schema(field_schema)
+
+
+def is_object_subfield(field_schema: Any) -> bool:
+    """True when the field schema is a dict (scored via ``_score_node``)."""
+    return is_object_schema(field_schema)
+
+
+def iou_xywh(a: BBox, b: BBox) -> float:
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
     ix = max(0.0, min(ax + aw, bx + bw) - max(ax, bx))
     iy = max(0.0, min(ay + ah, by + bh) - max(ay, by))
     inter = ix * iy
     union = aw * ah + bw * bh - inter
-    return inter / union if union > 0 else 0.0
+    if union <= 0:
+        return 0.0
+    # Reconstructing width as (x+w)-x is a few ulps off for values like 0.1,
+    # so the raw ratio can exceed 1.0 even for identical boxes.
+    return min(1.0, inter / union)
 
 
-class _Scorer:
+class Scorer:
     def __init__(
         self,
+        *,
         alt_values: dict[str, list[Any]],
-        evidence_boxes: dict[str, list[tuple[int, list[float]]]],
+        evidence_boxes: BoxIndex,
         evidence_pages: dict[str, set[int]],
         normalizers: dict[str, tuple[str, ...]],
-        pred_boxes: dict[str, list[tuple[int, list[float]]]],
+        pred_boxes: BoxIndex,
         pred_pages: dict[str, set[int]],
         fuzzy: dict[str, float],
         iou_threshold: float,
@@ -286,7 +354,9 @@ class _Scorer:
         self._iou = iou_threshold
 
     def _configured_cell_match(self, gt_path: str, expected: Any, actual: Any, field: str) -> bool:
-        return configured_cell_match(expected, actual, field, self._fuzzy, self._normalizers.get(gt_path))
+        return configured_cell_match(
+            expected, actual, field, fuzzy=self._fuzzy, normalizers=self._normalizers.get(gt_path)
+        )
 
     def _value_match(self, gt_path: str, canonical: Any, actual: Any, field: str) -> bool:
         """OR-acceptable: the prediction matches the expected value or any evidence value."""
@@ -300,7 +370,17 @@ class _Scorer:
         pred = self._pred_boxes.get(pred_path)
         if not gt_boxes or not pred:
             return False
-        return any(gp == pp and _iou_xywh(gb, pb) >= self._iou for gp, gb in gt_boxes for pp, pb in pred)
+        return any(gp == pp and iou_xywh(gb, pb) >= self._iou for gp, gb in gt_boxes for pp, pb in pred)
+
+    def _note_grounded_expected(self, path: str, c: _Counts) -> None:
+        if self._ev_boxes.get(path):
+            c.g_expected += 1
+
+    def _note_grounded_claim(self, gt_path: str, pred_path: str, c: _Counts) -> None:
+        if not self._pred_boxes.get(pred_path):
+            return
+        if self._ev_boxes.get(gt_path):
+            c.g_claims += 1
 
     def _page_match(self, gt_path: str, pred_path: str) -> bool:
         """A cited page for pred_path lands in the GT evidence's page set for
@@ -324,29 +404,43 @@ class _Scorer:
         not be counted here or the grounded/page precision/recall would be
         computed against a truncated denominator).
         """
-        if self._value_match(gt_path, canonical, actual, field):
+        matched = self._value_match(gt_path, canonical, actual, field)
+        if matched:
             c.v_correct += 1
             if ground:
                 if self._box_match(gt_path, pred_path):
                     c.g_correct += 1
                 if self._page_match(gt_path, pred_path):
                     c.p_correct += 1
-            return True
-        return False
+        return matched
 
-    def _count_subtree(self, path: str, value: Any, schema: dict[str, Any], c: _Counts, *, expected: bool) -> None:
-        """Count an unmatched subtree's leaves on one side only (recall or precision miss)."""
-        if isinstance(value, list) and any(isinstance(r, dict) for r in value):
-            subs = _array_subfields(schema if isinstance(schema, dict) else {}, value)
-            item_sch = (schema or {}).get("items", {}).get("properties", {})
-            for i, row in enumerate(value):
-                rd = row if isinstance(row, dict) else {}
-                for s in subs:
-                    self._count_subtree(f"{path}[{i}].{s}", rd.get(s), item_sch.get(s, {}), c, expected=expected)
-        elif expected:
+    def _count_subtree(self, path: str, value: Any, schema: Mapping[str, Any], c: _Counts, *, expected: bool) -> None:
+        """Count an unmatched subtree's leaves on one side only (recall or precision miss).
+
+        Unpaired rows must not go through ``_score_node``: that path treats a
+        missing partner as implicit ``null`` children and can *match* gold
+        nulls. There is no partner row here, so every leaf is a one-sided miss.
+        """
+        if is_array_schema(schema):
+            if is_object_array_schema(schema):
+                subfield_names = array_subfield_names(schema)
+                item_sch = array_item_properties(schema)
+                for i, row in enumerate(as_rows(value)):
+                    rd = row if isinstance(row, Mapping) else {}
+                    for s in subfield_names:
+                        self._count_subtree(f"{path}[{i}].{s}", rd.get(s), item_sch.get(s, {}), c, expected=expected)
+                return
+        elif is_object_schema(schema):
+            props = schema_properties(schema)
+            if len(props) > 0:
+                rd = value if isinstance(value, Mapping) else {}
+                for key, child_schema in props.items():
+                    child = f"{path}.{key}" if path else key
+                    self._count_subtree(child, rd.get(key), child_schema, c, expected=expected)
+                return
+        if expected:
             c.expected += 1
-            if self._ev_boxes.get(path):
-                c.g_expected += 1
+            self._note_grounded_expected(path, c)
             if self._ev_pages.get(path):
                 c.p_expected += 1
         else:
@@ -355,28 +449,44 @@ class _Scorer:
             # denominator (see _Counts.g_claims).
             c.predicted += 1
 
+    def _count_unmatched_nested(
+        self,
+        base: str,
+        row: Mapping[str, Any],
+        item_sch: Mapping[str, Any],
+        nested_names: Sequence[str],
+        c: _Counts,
+        *,
+        expected: bool,
+    ) -> None:
+        for s in nested_names:
+            self._count_subtree(f"{base}.{s}", row.get(s), item_sch.get(s, {}), c, expected=expected)
+
     def _score_array(
-        self, gt_field: str, pred_field: str, exp_rows: Any, act_rows: Any, schema: dict[str, Any], c: _Counts
+        self, gt_field: str, pred_field: str, exp_rows: Any, act_rows: Any, schema: Mapping[str, Any], c: _Counts
     ) -> None:
         # gt_field / pred_field are separate base paths: ground-truth cells (alt
         # values, evidence boxes) key off gt_field; predicted cells (citations)
         # key off pred_field. They differ once the outer array is reordered, so
         # threading both is what keeps nested grounding correct after a remap.
-        exp_rows = exp_rows if isinstance(exp_rows, list) else []
-        act_rows = act_rows if isinstance(act_rows, list) else []
-        subs = _array_subfields(schema if isinstance(schema, dict) else {}, exp_rows)
-        if not subs:
+        exp_rows = as_rows(exp_rows)
+        act_rows = as_rows(act_rows)
+        subfield_names = array_subfield_names(schema)
+        if len(subfield_names) == 0:
             return
-        item_sch = (schema or {}).get("items", {}).get("properties", {})
-        # A list-of-objects subfield is a real sub-record -> recurse (the depth
-        # array_record lacks). Scalars, scalar lists, and bare objects stay
-        # opaque cells, so a doc with no sub-record arrays scores bit-identically
-        # to array_record.
-        record_subs = [s for s in subs if _is_record_subfield(exp_rows, s)]
-        cell_subs = [s for s in subs if s not in record_subs]
+        item_sch = array_item_properties(schema)
+        # List-of-objects subfields recurse with another Hungarian pass.
+        # Dict-valued subfields recurse via ``_score_node`` (same as root).
+        # Scalars and scalar lists stay opaque cells.
+        object_array_names = [s for s in subfield_names if is_object_array_subfield(item_sch.get(s, {}))]
+        object_names = [
+            s for s in subfield_names if s not in object_array_names and is_object_subfield(item_sch.get(s, {}))
+        ]
+        cell_names = [s for s in subfield_names if s not in object_array_names and s not in object_names]
         # Opaque-cell denominators: array_record-exact (rows x cell subfields).
-        c.expected += len(exp_rows) * len(cell_subs)
-        c.predicted += len(act_rows) * len(cell_subs)
+        # Object and object-array fields are counted by the recursion below.
+        c.expected += len(exp_rows) * len(cell_names)
+        c.predicted += len(act_rows) * len(cell_names)
         c.expected_rows += len(exp_rows)
         c.predicted_rows += len(act_rows)
         # A flat array whose full grounded matrix would be multi-GB: skip its
@@ -385,7 +495,7 @@ class _Scorer:
         # (value-identical for opaque cells), and not counting
         # g_expected/g_claims/p_expected/p_claims here keeps the grounded and
         # page denominators consistent with the skipped g_correct/p_correct.
-        # ``not record_subs`` guarantees no nested recursion, so the peel cannot
+        # ``not object_array_names and not object_names`` guarantees no nested recursion, so the peel cannot
         # shift nested TP. The memory win only lands on the plain peel path: an
         # array with genuine alternate values (``multi``) or field normalizers
         # still builds the full candidate matrix below regardless of ``giant`` --
@@ -393,11 +503,12 @@ class _Scorer:
         # threshold bounds the FULL matrix; the peel's residual matrix over
         # unmatched rows can still grow if few rows match exactly, so treat it as
         # a heuristic, not a hard ceiling.
-        giant = bool(
-            exp_rows
-            and act_rows
-            and cell_subs
-            and not record_subs
+        giant = (
+            len(exp_rows) > 0
+            and len(act_rows) > 0
+            and len(cell_names) > 0
+            and len(object_array_names) == 0
+            and len(object_names) == 0
             and len(exp_rows) * len(act_rows) > _GROUNDED_MAX_CELLS
         )
         # Page presence drives both the grounded-family denominators and the
@@ -412,16 +523,15 @@ class _Scorer:
             # document's grounded/page score incomplete and must be withheld
             # entirely. Pages are the superset, so this covers dropped bboxes too.
             dropped_grounding = any(
-                self._ev_pages.get(f"{gt_field}[{i}].{s}") for i in range(len(exp_rows)) for s in cell_subs
-            ) or any(self._pred_pages.get(f"{pred_field}[{j}].{s}") for j in range(len(act_rows)) for s in cell_subs)
+                self._ev_pages.get(f"{gt_field}[{i}].{s}") for i in range(len(exp_rows)) for s in cell_names
+            ) or any(self._pred_pages.get(f"{pred_field}[{j}].{s}") for j in range(len(act_rows)) for s in cell_names)
             if dropped_grounding:
                 c.grounded_incomplete = True
         else:
             for i in range(len(exp_rows)):
-                for s in cell_subs:
+                for s in cell_names:
                     gt_path = f"{gt_field}[{i}].{s}"
-                    if self._ev_boxes.get(gt_path):
-                        c.g_expected += 1
+                    self._note_grounded_expected(gt_path, c)
                     if self._ev_pages.get(gt_path):
                         c.p_expected += 1
                         has_ev_page = True
@@ -431,26 +541,29 @@ class _Scorer:
             # reflects ANY predicted page (the superset of any predicted bbox) so
             # the pairing-sensitive branch selection below covers both families.
             for j in range(len(act_rows)):
-                for s in cell_subs:
+                for s in cell_names:
                     if self._pred_pages.get(f"{pred_field}[{j}].{s}"):
                         has_pred_page = True
                         break
                 if has_pred_page:
                     break
-        # Sub-record subfields are counted by the recursion below, per matched
+        # Object-array subfields are counted by the recursion below, per matched
         # pair (and as one-sided misses for unmatched rows).
         match_for_exp: dict[int, int] = {}
-        if exp_rows and act_rows:
-            cost_subs = cell_subs or subs  # align on identity cells; fall back to all
+        if len(exp_rows) > 0 and len(act_rows) > 0:
+            # Align on opaque + object cells; objects still count as one cost cell.
+            cost_names: Sequence[str] = cell_names + object_names
+            if len(cost_names) == 0:
+                cost_names = subfield_names
             fuzzy = self._fuzzy
-            exp_dicts = [e if isinstance(e, dict) else {} for e in exp_rows]
+            exp_dicts = [e if isinstance(e, Mapping) else {} for e in exp_rows]
             # The alt index holds every leaf's evidence value, so most entries
             # equal the expected value. A genuinely different alternate expands
             # the zero-cost graph; in that case use full assignment semantics and
             # do not greedily peel canonical exact matches.
             multi = False
             for i, ed in enumerate(exp_dicts):
-                for s in cost_subs:
+                for s in cost_names:
                     canon = ed.get(s)
                     alt = self._alt.get(f"{gt_field}[{i}].{s}")
                     if alt:
@@ -469,16 +582,16 @@ class _Scorer:
             # carries normalizers at all (the default): the path scan is
             # O(rows x subfields) per array and would otherwise run for nothing.
             has_normalizer = (
-                bool(self._normalizers)
+                len(self._normalizers) > 0
                 and not multi
-                and any(self._normalizers.get(f"{gt_field}[{i}].{s}") for i in range(len(exp_rows)) for s in cost_subs)
+                and any(self._normalizers.get(f"{gt_field}[{i}].{s}") for i in range(len(exp_rows)) for s in cost_names)
             )
 
             if multi or has_normalizer:
                 exp_cands = []
                 for i, ed in enumerate(exp_dicts):
                     row_cands = []
-                    for s in cost_subs:
+                    for s in cost_names:
                         canon = ed.get(s)
                         alt = self._alt.get(f"{gt_field}[{i}].{s}")
                         cand = [canon]
@@ -488,39 +601,41 @@ class _Scorer:
                     exp_cands.append(row_cands)
                 cost = np.empty((len(act_rows), len(exp_rows)), dtype=np.int16)
                 for j, arow in enumerate(act_rows):
-                    ad = arow if isinstance(arow, dict) else {}
-                    avals = [ad.get(s) for s in cost_subs]
+                    ad = arow if isinstance(arow, Mapping) else {}
+                    avals = [ad.get(s) for s in cost_names]
                     for i, cands in enumerate(exp_cands):
                         cost[j, i] = sum(
                             not any(
                                 self._configured_cell_match(
-                                    f"{gt_field}[{i}].{cost_subs[si]}", cv, avals[si], cost_subs[si]
+                                    f"{gt_field}[{i}].{cost_names[si]}", cv, avals[si], cost_names[si]
                                 )
                                 for cv in cands[si]
                             )
-                            for si in range(len(cost_subs))
+                            for si in range(len(cost_names))
                         )
                 row_ind, col_ind = linear_sum_assignment(cost)
                 match_for_exp = {int(i): int(j) for j, i in zip(row_ind, col_ind, strict=True)}
-            elif record_subs or (has_ev_page and has_pred_page):
-                # Pairing-sensitive scoring: nested sub-records recurse on the
-                # matched predicted index, and per-cell grounding + page grading
-                # key off it too. Among equal-cost optima the exact-row peel could
+            elif len(object_array_names) > 0 or len(object_names) > 0 or (has_ev_page and has_pred_page):
+                # Pairing-sensitive scoring: nested object arrays and in-row objects
+                # recurse on the matched predicted index, and per-cell grounding +
+                # page grading key off it too. Among equal-cost optima the exact-row peel could
                 # pick a different pairing than the full assignment and shift
                 # grounded / page / nested TP, so fall back to full assignment to
                 # preserve the exact tie-break. ``has_ev_page``/``has_pred_page``
                 # are the bbox supersets, so this branch also covers every
                 # bbox-grounded array.
-                cost = _mismatch_cost_matrix(act_rows, exp_rows, cost_subs, fuzzy)
+                cost = mismatch_cost_matrix(act_rows, exp_rows, subfields=cost_names, fuzzy_field_thresholds=fuzzy)
                 row_ind, col_ind = linear_sum_assignment(cost)
                 match_for_exp = {int(i): int(j) for j, i in zip(row_ind, col_ind, strict=True)}
             else:
                 # Opaque-cell-only, un-grounded: the value score is pairing-
                 # independent (n_pairs*k - total_cost), so peeling exact rows is
                 # safe. Reuse the vectorized interned matrix on the residual rows.
-                assignment = _peel_exact_row_matches(act_rows, exp_rows, cost_subs, fuzzy)
+                assignment = peel_exact_row_matches(
+                    act_rows, exp_rows, subfields=cost_names, fuzzy_field_thresholds=fuzzy
+                )
                 match_for_exp = {int(i): int(j) for j, i in assignment.pairs}
-                if assignment.unmatched_actual_indices and assignment.unmatched_expected_indices:
+                if len(assignment.unmatched_actual_indices) > 0 and len(assignment.unmatched_expected_indices) > 0:
                     residual_actual = [act_rows[idx] for idx in assignment.unmatched_actual_indices]
                     residual_expected = [exp_rows[idx] for idx in assignment.unmatched_expected_indices]
                     # Memory ceiling on the residual assignment matrix (parallel to
@@ -535,7 +650,12 @@ class _Scorer:
                     if len(residual_actual) * len(residual_expected) > _GROUNDED_MAX_CELLS:
                         c.value_incomplete = True
                     else:
-                        cost = _mismatch_cost_matrix(residual_actual, residual_expected, cost_subs, fuzzy)
+                        cost = mismatch_cost_matrix(
+                            residual_actual,
+                            residual_expected,
+                            subfields=cost_names,
+                            fuzzy_field_thresholds=fuzzy,
+                        )
                         row_ind, col_ind = linear_sum_assignment(cost)
                         match_for_exp.update(
                             {
@@ -547,68 +667,88 @@ class _Scorer:
                         )
         matched_act = set(match_for_exp.values())
         for i, erow in enumerate(exp_rows):
-            ed = erow if isinstance(erow, dict) else {}
+            ed = erow if isinstance(erow, Mapping) else {}
             mj = match_for_exp.get(i)
             if mj is not None:
-                ad = act_rows[mj] if isinstance(act_rows[mj], dict) else {}
-                for s in cell_subs:
+                ad = act_rows[mj] if isinstance(act_rows[mj], Mapping) else {}
+                for s in cell_names:
                     gt_path = f"{gt_field}[{i}].{s}"
                     pred_path = f"{pred_field}[{mj}].{s}"
                     if not giant:
-                        if self._ev_boxes.get(gt_path) and self._pred_boxes.get(pred_path):
-                            c.g_claims += 1
+                        self._note_grounded_claim(gt_path, pred_path, c)
                         if self._ev_pages.get(gt_path) and self._pred_pages.get(pred_path):
                             c.p_claims += 1
                     self._score_cell(gt_path, pred_path, ed.get(s), ad.get(s), s, c, ground=not giant)
-                for s in record_subs:  # recurse with the matched predicted index, not the GT index
+                for s in object_array_names:  # recurse with the matched predicted index, not the GT index
                     self._score_array(
                         f"{gt_field}[{i}].{s}", f"{pred_field}[{mj}].{s}", ed.get(s), ad.get(s), item_sch.get(s, {}), c
                     )
-            else:  # unmatched GT row: cell subfields already counted; recurse sub-records as recall misses
-                for s in record_subs:
-                    self._count_subtree(f"{gt_field}[{i}].{s}", ed.get(s), item_sch.get(s, {}), c, expected=True)
-        for j, arow in enumerate(act_rows):  # extra predicted rows: sub-records are precision misses
+                for s in object_names:
+                    self._score_node(
+                        f"{gt_field}[{i}].{s}", f"{pred_field}[{mj}].{s}", ed.get(s), ad.get(s), item_sch.get(s, {}), c
+                    )
+            else:  # unmatched GT row: cell subfields already counted; recurse nested as recall misses
+                self._count_unmatched_nested(
+                    f"{gt_field}[{i}]", ed, item_sch, object_array_names + object_names, c, expected=True
+                )
+        for j, arow in enumerate(act_rows):  # extra predicted rows: nested fields are precision misses
             if j in matched_act:
                 continue
-            ad = arow if isinstance(arow, dict) else {}
-            for s in record_subs:
-                self._count_subtree(f"{pred_field}[{j}].{s}", ad.get(s), item_sch.get(s, {}), c, expected=False)
+            ad = arow if isinstance(arow, Mapping) else {}
+            self._count_unmatched_nested(
+                f"{pred_field}[{j}]", ad, item_sch, object_array_names + object_names, c, expected=False
+            )
 
-    def score_root(self, expected: dict[str, Any], actual: dict[str, Any], schema_props: dict[str, Any]) -> _Counts:
+    def _score_scalar_cell(self, gt_path: str, pred_path: str, ev: Any, av: Any, c: _Counts) -> None:
+        leaf = path_leaf(gt_path)
+        c.expected += 1
+        self._note_grounded_expected(gt_path, c)
+        self._note_grounded_claim(gt_path, pred_path, c)
+        if self._ev_pages.get(gt_path):
+            c.p_expected += 1
+            if self._pred_pages.get(pred_path):
+                c.p_claims += 1
+        self._score_cell(gt_path, pred_path, ev, av, leaf, c)
+        # An omitted key is an implicit null prediction and always enters the
+        # precision denominator, right or wrong -- exactly as if the model had
+        # asserted null explicitly.
+        c.predicted += 1
+
+    def _score_node(
+        self, gt_path: str, pred_path: str, ev: Any, av: Any, schema: Mapping[str, Any], c: _Counts
+    ) -> None:
+        if is_array_schema(schema):
+            self._score_array(gt_path, pred_path, ev, av, schema, c)
+            return
+        if is_object_schema(schema):
+            props = schema_properties(schema)
+            ed = ev if isinstance(ev, Mapping) else {}
+            ad = av if isinstance(av, Mapping) else {}
+            keys = list(props.keys())
+            if len(keys) == 0:
+                self._score_scalar_cell(gt_path, pred_path, ev, av, c)
+                return
+            for key in keys:
+                child_gt = f"{gt_path}.{key}" if gt_path else key
+                child_pred = f"{pred_path}.{key}" if pred_path else key
+                self._score_node(child_gt, child_pred, ed.get(key), ad.get(key), props[key], c)
+            return
+        self._score_scalar_cell(gt_path, pred_path, ev, av, c)
+
+    def score_root(
+        self, expected: Mapping[str, Any], actual: Mapping[str, Any], schema_props: Mapping[str, Any]
+    ) -> _Counts:
         c = _Counts()
-        for field in sorted((set(expected) | set(actual)) - RESERVED_OUTPUT_KEYS):
-            fsch = schema_props.get(field, {})
-            ev = expected.get(field)
-            av = actual.get(field)
-            if _is_array_schema(fsch, ev):
-                self._score_array(field, field, ev, av, fsch, c)
-            else:
-                # Scalar or shallow-object cell, scored opaquely (array_record parity).
-                c.expected += 1
-                if self._ev_boxes.get(field):
-                    c.g_expected += 1
-                    if self._pred_boxes.get(field):
-                        c.g_claims += 1
-                if self._ev_pages.get(field):
-                    c.p_expected += 1
-                    if self._pred_pages.get(field):
-                        c.p_claims += 1
-                self._score_cell(field, field, ev, av, field, c)
-                # An omitted key is an implicit null prediction and always
-                # enters the precision denominator, right or wrong -- exactly as
-                # if the model had asserted null explicitly. Counting it only
-                # when correct would let tp exceed predicted (precision > 1.0),
-                # and counting it never would make omitting an uncertain field
-                # strictly outscore asserting it.
-                c.predicted += 1
+        for name in sorted((set(expected) | set(actual)) - RESERVED_OUTPUT_KEYS):
+            self._score_node(name, name, expected.get(name), actual.get(name), schema_props.get(name, {}), c)
         return c
 
 
-def _build_rule_indexes(
+def build_rule_indexes(
     field_rules: list[ExtractFieldTestRule],
 ) -> tuple[
     dict[str, list[Any]],
-    dict[str, list[tuple[int, list[float]]]],
+    BoxIndex,
     dict[str, set[int]],
     dict[str, tuple[str, ...]],
 ]:
@@ -619,7 +759,7 @@ def _build_rule_indexes(
     annotation still makes a cell page-gradeable.
     """
     alt: dict[str, list[Any]] = {}
-    boxes: dict[str, list[tuple[int, list[float]]]] = {}
+    boxes: BoxIndex = {}
     pages: dict[str, set[int]] = {}
     normalizers: dict[str, tuple[str, ...]] = {}
     for rule in field_rules:
@@ -633,21 +773,22 @@ def _build_rule_indexes(
         for e in entries:
             if e.page is not None:
                 pages.setdefault(path, set()).add(int(e.page))
-                if e.bbox is not None and len(e.bbox) >= 4:
-                    boxes.setdefault(path, []).append((int(e.page), [float(x) for x in e.bbox[:4]]))
+                parsed = _validated_bbox(e.bbox) if e.bbox is not None else None
+                if parsed is not None:
+                    boxes.setdefault(path, []).append((int(e.page), parsed))
     return alt, boxes, pages, normalizers
 
 
-def _index_citations(
+def index_citations(
     field_citations: list[Any],
-) -> tuple[dict[str, list[tuple[int, list[float]]]], dict[str, set[int]]]:
+) -> tuple[BoxIndex, dict[str, set[int]]]:
     """field_path -> citation boxes; field_path -> citation pages.
 
     A page-only citation (page present, bbox missing) is indexed for pages but
     not for boxes, so it can satisfy a page match without ever being credited as
     a bbox match.
     """
-    boxes: dict[str, list[tuple[int, list[float]]]] = {}
+    boxes: BoxIndex = {}
     pages: dict[str, set[int]] = {}
     for cit in field_citations or []:
         path = cit.get("field_path") if isinstance(cit, dict) else getattr(cit, "field_path", None)
@@ -656,8 +797,9 @@ def _index_citations(
         if not path or page is None:
             continue
         pages.setdefault(path, set()).add(int(page))
-        if bbox and len(bbox) >= 4:
-            boxes.setdefault(path, []).append((int(page), [float(x) for x in bbox[:4]]))
+        parsed = _validated_bbox(bbox) if isinstance(bbox, (list, tuple)) else None
+        if parsed is not None:
+            boxes.setdefault(path, []).append((int(page), parsed))
     return boxes, pages
 
 
@@ -675,7 +817,7 @@ def compute_unified_evidence_metrics(
     field_citations: list[Any] | None = None,
     data_schema: dict[str, Any] | None = None,
     *,
-    fuzzy_field_thresholds: dict[str, float] | None = None,
+    fuzzy_field_thresholds: Mapping[str, float] | None = None,
     normalize_dates: bool = True,
     bbox_iou_threshold: float = 0.5,
 ) -> list[MetricValue]:
@@ -684,24 +826,33 @@ def compute_unified_evidence_metrics(
     Returns an empty list when either side is not a dict (no array structure to
     score), matching ``array_record``'s ``counts is None`` guard.
     """
-    expected = _unwrap_value(expected_output)
-    actual = _unwrap_value(extracted_data)
-    if not isinstance(expected, dict) or not isinstance(actual, dict):
+    expected = unwrap_value(expected_output)
+    actual = unwrap_value(extracted_data)
+    if not isinstance(expected, Mapping) or not isinstance(actual, Mapping):
         return []
     if normalize_dates:
-        expected = _normalize_dates_deep(expected)
-        actual = _normalize_dates_deep(actual)
+        expected = normalize_dates_deep(expected)
+        actual = normalize_dates_deep(actual)
 
     fuzzy = dict(DEFAULT_FUZZY_FIELD_THRESHOLDS if fuzzy_field_thresholds is None else fuzzy_field_thresholds)
-    alt, ev_boxes, ev_pages, normalizers = _build_rule_indexes(field_rules)
+    alt, ev_boxes, ev_pages, normalizers = build_rule_indexes(field_rules)
     if normalize_dates:
-        alt = {p: _normalize_dates_deep(v) for p, v in alt.items()}
-    pred_boxes, pred_pages = _index_citations(field_citations or [])
-    schema_props = (data_schema or {}).get("properties", {})
+        alt = {p: normalize_dates_deep(v) for p, v in alt.items()}
+    pred_boxes, pred_pages = index_citations(field_citations or [])
+    # Same inliner extract GT lint uses: root ``#/$defs/X`` (and ``definitions``).
+    resolved = resolve_refs(data_schema) if isinstance(data_schema, Mapping) else {}
+    schema_props = schema_properties(resolved)
 
-    c = _Scorer(alt, ev_boxes, ev_pages, normalizers, pred_boxes, pred_pages, fuzzy, bbox_iou_threshold).score_root(
-        expected, actual, schema_props
-    )
+    c = Scorer(
+        alt_values=alt,
+        evidence_boxes=ev_boxes,
+        evidence_pages=ev_pages,
+        normalizers=normalizers,
+        pred_boxes=pred_boxes,
+        pred_pages=pred_pages,
+        fuzzy=fuzzy,
+        iou_threshold=bbox_iou_threshold,
+    ).score_root(expected, actual, schema_props)
     if c.expected == 0 and c.predicted == 0:
         return []
 

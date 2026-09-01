@@ -123,6 +123,44 @@ def resolve_refs(schema: Any, root: dict[str, Any] | None = None, _seen: frozens
     return schema
 
 
+def schema_properties(schema: Any) -> dict[str, Any]:
+    """Merge ``properties`` from this node and nested ``anyOf`` / ``oneOf`` / ``allOf``.
+
+    Used for object-shaped fields whose schema is written as
+    ``anyOf: [{$ref: ...}, {type: null}]`` after ``resolve_refs`` has inlined
+    the ref. Later combinator branches overwrite earlier keys of the same name.
+    ``$ref`` is not followed here.
+    """
+    if not isinstance(schema, dict):
+        return {}
+    props: dict[str, Any] = dict(schema.get("properties") or {}) if "properties" in schema else {}
+    for key in ("anyOf", "oneOf", "allOf"):
+        for alt in schema.get(key) or []:
+            props.update(schema_properties(alt))
+    return props
+
+
+def schema_items(schema: Any) -> dict[str, Any]:
+    """The array ``items`` schema, looking through ``anyOf`` / ``oneOf`` / ``allOf``.
+
+    Prefer a top-level ``items`` dict (a bare ``{type: array, items: ...}``
+    node). Otherwise return the first combinator alternative that has one.
+    The result is still the items *node* (often an object schema); flatten its
+    fields with ``schema_properties``. Does not follow ``$ref``.
+    """
+    if not isinstance(schema, dict):
+        return {}
+    items = schema.get("items")
+    if isinstance(items, dict):
+        return items
+    for key in ("anyOf", "oneOf", "allOf"):
+        for alt in schema.get(key) or []:
+            found = schema_items(alt)
+            if found:
+                return found
+    return {}
+
+
 def _typestr(s: dict[str, Any]) -> str:
     s = _effective(s)
     t = s.get("type")
