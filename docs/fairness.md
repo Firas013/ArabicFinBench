@@ -52,13 +52,38 @@ A leaderboard row must carry: adapter, model version string, named mode, canon
 version, cost per page, median latency, seed count, run timestamp, page-image
 hashes (sha256 over deterministically rendered page rasters — tied to what the
 models saw, not the PDF container), and prompt hash. A missing field rejects
-the row with `MissingProvenanceError` naming it. Hand-imported results
+the row with `MissingProvenanceError` naming it. Operator-stated fields (model
+version, mode, seed count, sampled) live in tracked declarations under
+`arabicfinbench/runs/` — a statement that gates admission cannot live only in
+untracked scratch that `rm -rf output/` destroys. Evidence: Mistral was rejected
+on first submission with `missing provenance field(s): mode`, because its
+pipeline config carries `model` rather than `mode` and nothing was derivable;
+the mode is now operator-stated with the reason recorded. Hand-imported results
 (`afb_import_datalab.py` stamps them) appear in the dev report under that
 label and are rejected from the leaderboard with `HandImportedResultError` —
 their mode, cost, and latency would be guesses. Evidence: the Datalab web
 export scored within 0.004 of the API run, and still does not qualify: mode
 unknown. Datalab was re-run through its API adapter in the named `accurate`
 mode for the admitted row.
+
+### Test_1, three systems, all guards active
+
+| `table_record_match` | raw | text | struct | Δ | fidelity | $/page | latency |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| llamaparse_agentic | 0.3195 | 0.8149 | **0.9129** | +0.59 | 0.2402 | 0.0125 | 37.9 s |
+| datalab_accurate | 0.7413 | 0.7488 | 0.7728 | +0.03 | 1.0000 | 0.0100 | 32.9 s |
+| mistral_ocr_4 | 0.4509 | 0.4541 | 0.4685 | +0.02 | 1.0000 | 0.0040 | 2.7 s |
+
+The delta column separates two situations that a single score conflates.
+LlamaParse's raw number was substantially about numeral convention (+0.59);
+Datalab's and Mistral's were not (+0.03, +0.02), and both preserve the page's
+script exactly. So Mistral's low canon score is a **real** failure rather than an
+artefact — and the per-table block says which one: it emitted 10 tables against a
+ground truth of 5, decomposing the side-by-side note tables on page 3 into
+single-column fragments and orphaning the row labels into free text. Column-order
+canon reports `skip:too-small` on those fragments rather than inventing a
+permutation, which is the refusal working as intended: the label↔value
+association is gone, and no canonical form can restore it.
 
 ## 5. Fail loudly — `arabicfinbench/guards.py`, provider registry, scorer
 

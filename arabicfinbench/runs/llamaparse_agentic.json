@@ -1,0 +1,5 @@
+{
+  "model_version": "llamaparse/agentic@latest (job-pinned; job_id recorded in each result.json)",
+  "seed_count": 1,
+  "sampled": false
+}

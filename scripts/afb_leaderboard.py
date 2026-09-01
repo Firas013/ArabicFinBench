@@ -56,6 +56,29 @@ def _harness_facts(output_dir: Path) -> dict:
     return facts
 
 
+RUNS_DIR = Path("arabicfinbench/runs")
+
+
+def _operator_declaration(pipeline: str, output_dir: Path) -> dict:
+    """Operator-stated provenance: tracked declaration, then local override.
+
+    The tracked file in ``arabicfinbench/runs/`` is the auditable one — a
+    statement that gates leaderboard admission cannot live only in untracked
+    scratch that ``rm -rf output/`` destroys. The copy beside the run output
+    still wins when present, for local iteration before a declaration is
+    committed.
+    """
+    declaration: dict = {}
+    tracked = RUNS_DIR / f"{pipeline}.json"
+    if tracked.exists():
+        declaration.update(json.loads(tracked.read_text(encoding="utf-8")))
+    local = output_dir / "_afb_provenance.json"
+    if local.exists():
+        declaration.update(json.loads(local.read_text(encoding="utf-8")))
+    # Keys documented as commentary, never provenance fields.
+    return {k: v for k, v in declaration.items() if not k.startswith("_")}
+
+
 def _build_row(
     pipeline: str,
     output_root: Path,
@@ -83,8 +106,7 @@ def _build_row(
         all_hashes.extend(pdf_hashes.get(case.test_id, ()))
 
     facts = _harness_facts(output_dir)
-    overrides_path = output_dir / "_afb_provenance.json"
-    overrides = json.loads(overrides_path.read_text(encoding="utf-8")) if overrides_path.exists() else {}
+    overrides = _operator_declaration(pipeline, output_dir)
 
     provenance = Provenance(
         adapter=pipeline,
