@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict, deque
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeGuard
 
 import numpy as np
 from rapidfuzz import fuzz
@@ -15,6 +16,11 @@ from extract_bench.evaluation.metrics.extract.json_subset_match import (
     _is_nullable_numeric_field,
     _normalize_nullable_numeric,
     normalize_date_string,
+)
+from extract_bench.inference.providers.extract.table_codegen.schema_utils import (
+    resolve_refs,
+    schema_items,
+    schema_properties,
 )
 from extract_bench.schemas.evaluation import MetricValue
 
@@ -31,7 +37,7 @@ _WS_RE = re.compile(r"\s+", re.U)
 # NEVER be scored as extracted cells. Kept in sync with the codegen provider's
 # ``PROVENANCE_KEY`` (table_codegen/schema_utils.py): a record may carry
 # ``_provenance: {"page": N}`` for source attribution, which the validity gate tolerates
-# and these value metrics ignore (nested record subfields already come from the schema /
+# and these value metrics ignore (nested object-array subfields already come from the schema /
 # expected rows, so the only leak was the top-level union walk over actual keys).
 RESERVED_OUTPUT_KEYS: frozenset[str] = frozenset({"_provenance"})
 
@@ -72,13 +78,13 @@ def _normalize_text(value: str) -> str:
     return _WS_RE.sub(" ", _PUNCT_RE.sub(" ", value)).strip().lower()
 
 
-def _unwrap_value(value: Any) -> Any:
+def unwrap_value(value: Any) -> Any:
     if isinstance(value, dict) and set(value) == {"value"}:
         return value["value"]
     return value
 
 
-def _normalize_dates_deep(value: Any) -> Any:
+def normalize_dates_deep(value: Any) -> Any:
     """Canonicalize date-like strings to ISO format everywhere in a JSON value.
 
     Applied once to both sides up front (not per cell pair) so the n×m
@@ -89,13 +95,13 @@ def _normalize_dates_deep(value: Any) -> Any:
     if isinstance(value, str):
         return normalize_date_string(value)
     if isinstance(value, dict):
-        return {k: _normalize_dates_deep(v) for k, v in value.items()}
+        return {k: normalize_dates_deep(v) for k, v in value.items()}
     if isinstance(value, list):
-        return [_normalize_dates_deep(v) for v in value]
+        return [normalize_dates_deep(v) for v in value]
     return value
 
 
-def _normalize_ws(value: str) -> str:
+def normalize_ws(value: str) -> str:
     """Collapse internal whitespace runs so only inter-word spacing matters.
 
     Multi-line cells (postal addresses, wrapped headers) carry hard line breaks
@@ -111,11 +117,12 @@ def _normalize_ws(value: str) -> str:
     return _WS_RE.sub(" ", value).strip()
 
 
-def _cell_match(
+def cell_match(
     expected: Any,
     actual: Any,
     field: str,
-    fuzzy_field_thresholds: dict[str, float],
+    *,
+    fuzzy_field_thresholds: Mapping[str, float],
     field_schema: Any = None,
 ) -> bool:
     threshold = fuzzy_field_thresholds.get(field)
@@ -123,10 +130,12 @@ def _cell_match(
         expected_norm = _normalize_text(expected)
         actual_norm = _normalize_text(actual)
         return expected_norm == actual_norm or (
-            bool(expected_norm) and bool(actual_norm) and fuzz.ratio(expected_norm, actual_norm) >= threshold * 100.0
+            len(expected_norm) > 0
+            and len(actual_norm) > 0
+            and fuzz.ratio(expected_norm, actual_norm) >= threshold * 100.0
         )
     if isinstance(expected, str) and isinstance(actual, str):
-        return _normalize_ws(expected) == _normalize_ws(actual)
+        return normalize_ws(expected) == normalize_ws(actual)
     # Nullable numeric fields treat 0 / 0.0 and None as equivalent. Gated on
     # the JSON Schema shape so plain numeric fields keep strict semantics.
     if _is_nullable_numeric_field(field_schema):
@@ -175,13 +184,16 @@ def _eq_key(value: Any) -> Any:
     return ("v", value)
 
 
-def _cell_key(value: Any, field_schema: Any = None) -> Any:
-    """Hashable interning key that mirrors ``_cell_match`` for non-fuzzy fields.
+def _cell_key(
+    value: Any,
+    field_schema: Any = None,
+) -> Any:
+    """Hashable interning key that mirrors ``cell_match`` for non-fuzzy fields.
 
-    Two cells share a key iff ``_cell_match`` returns True (strings compared
+    Two cells share a key iff ``cell_match`` returns True (strings compared
     whitespace-insensitively, everything else by ``==``). Strings are tagged
     apart from non-strings so a normalized string can never collide with a
-    look-alike scalar, exactly as ``_cell_match`` keeps its str/str branch
+    look-alike scalar, exactly as ``cell_match`` keeps its str/str branch
     distinct from the ``==`` fallback. List and dict cells freeze to tagged
     tuples of exact nested values so opaque JSON arrays and objects intern
     the same way scalars already do. Returns ``_UNHASHABLE`` when a cell still
@@ -189,10 +201,10 @@ def _cell_key(value: Any, field_schema: Any = None) -> Any:
 
     When ``field_schema`` is a nullable-numeric shape, ``0`` / ``0.0`` collapse
     to ``None`` in the key so that null-vs-zero cells intern to the same slot,
-    matching the equality relaxation in ``_cell_match``.
+    matching the equality relaxation in ``cell_match``.
     """
     if isinstance(value, str):
-        return ("s", _normalize_ws(value))
+        return ("s", normalize_ws(value))
     if _is_nullable_numeric_field(field_schema):
         value = _normalize_nullable_numeric(value)
     if isinstance(value, (list, dict)):
@@ -205,14 +217,14 @@ def _cell_key(value: Any, field_schema: Any = None) -> Any:
 
 
 def _intern_field(
-    actual_list: list[Any],
-    expected_list: list[Any],
+    actual_list: Sequence[Any],
+    expected_list: Sequence[Any],
     field: str,
     field_schema: Any = None,
 ) -> tuple[np.ndarray, np.ndarray] | None:
     """Map each row's ``field`` cell to an int id shared across both sides.
 
-    Equal cells (per ``_cell_match``) receive the same id, so a single
+    Equal cells (per ``cell_match``) receive the same id, so a single
     broadcasted integer ``!=`` reproduces the per-pair mismatch test while
     normalizing each cell once, not once per pair. Returns ``None`` if any
     cell cannot be interned so the caller scores that column pairwise.
@@ -236,9 +248,8 @@ def _intern_field(
 
 def _row_match_key(
     row: Any,
-    subfields: list[str],
-    fuzzy_field_thresholds: dict[str, float],
-    field_schemas: dict[str, Any] | None = None,
+    subfields: Sequence[str],
+    field_schemas: Mapping[str, Any] | None = None,
 ) -> tuple[Any, ...] | None:
     """Hashable full-row key whose equality implies zero assignment cost."""
     row_dict = row if isinstance(row, dict) else {}
@@ -252,16 +263,20 @@ def _row_match_key(
     return tuple(parts)
 
 
-def _can_peel_exact_rows(subfields: list[str], fuzzy_field_thresholds: dict[str, float]) -> bool:
+def _can_peel_exact_rows(
+    subfields: Sequence[str],
+    fuzzy_field_thresholds: Mapping[str, float],
+) -> bool:
     return all(fuzzy_field_thresholds.get(field) is None for field in subfields)
 
 
-def _peel_exact_row_matches(
+def peel_exact_row_matches(
     actual_list: list[Any],
     expected_list: list[Any],
-    subfields: list[str],
-    fuzzy_field_thresholds: dict[str, float],
-    field_schemas: dict[str, Any] | None = None,
+    *,
+    subfields: Sequence[str],
+    fuzzy_field_thresholds: Mapping[str, float],
+    field_schemas: Mapping[str, Any] | None = None,
 ) -> _RowAssignment:
     """Pre-align zero-cost rows before building an expensive residual matrix.
 
@@ -278,7 +293,7 @@ def _peel_exact_row_matches(
 
     actual_by_key: defaultdict[tuple[Any, ...], deque[int]] = defaultdict(deque)
     for actual_idx, row in enumerate(actual_list):
-        key = _row_match_key(row, subfields, fuzzy_field_thresholds, field_schemas)
+        key = _row_match_key(row, subfields, field_schemas)
         if key is not None:
             actual_by_key[key].append(actual_idx)
 
@@ -286,7 +301,7 @@ def _peel_exact_row_matches(
     matched_actual: set[int] = set()
     unmatched_expected_indices: list[int] = []
     for expected_idx, row in enumerate(expected_list):
-        key = _row_match_key(row, subfields, fuzzy_field_thresholds, field_schemas)
+        key = _row_match_key(row, subfields, field_schemas)
         bucket = actual_by_key.get(key) if key is not None else None
         if bucket:
             actual_idx = bucket.popleft()
@@ -303,22 +318,23 @@ def _peel_exact_row_matches(
     )
 
 
-def _mismatch_cost_matrix(
+def mismatch_cost_matrix(
     actual_list: list[Any],
     expected_list: list[Any],
-    subfields: list[str],
-    fuzzy_field_thresholds: dict[str, float],
-    field_schemas: dict[str, Any] | None = None,
+    *,
+    subfields: Sequence[str],
+    fuzzy_field_thresholds: Mapping[str, float],
+    field_schemas: Mapping[str, Any] | None = None,
 ) -> np.ndarray:
     """Vectorized ``(n_actual, n_expected)`` matrix of mismatched-subfield counts.
 
-    Bit-identical to the per-pair ``sum(not _cell_match(...))`` build but without
+    Bit-identical to the per-pair ``sum(not cell_match(...))`` build but without
     the n*m*k Python loop: each exact-match subfield is interned to ints and
     compared with one broadcasted ``!=`` (each cell normalized once, not once per
     pair). Fuzzy fields and unhashable cells fall back to the original pairwise
     compare for that column only. The matrix is ``int16`` (counts are bounded by
-    ``len(subfields)``) -- 4x smaller than ``float64``, which bounds the build
-    time and memory of very large matrices.
+    ``len(subfields)``) -- a 4x smaller cost matrix than the old ``float64`` and
+    the change that lifts the giant-array build time and OOM.
     """
     na, ne = len(actual_list), len(expected_list)
     cost = np.zeros((na, ne), dtype=np.int16)
@@ -340,7 +356,13 @@ def _mismatch_cost_matrix(
             cost_row = cost[i]
             for j, expected_row in enumerate(expected_list):
                 expected_dict = expected_row if isinstance(expected_row, dict) else {}
-                if not _cell_match(expected_dict.get(field), actual_value, field, fuzzy_field_thresholds, field_schema):
+                if not cell_match(
+                    expected_dict.get(field),
+                    actual_value,
+                    field,
+                    fuzzy_field_thresholds=fuzzy_field_thresholds,
+                    field_schema=field_schema,
+                ):
                     cost_row[j] += 1
     return cost
 
@@ -348,13 +370,20 @@ def _mismatch_cost_matrix(
 def _assign_rows(
     actual_list: list[Any],
     expected_list: list[Any],
-    subfields: list[str],
-    fuzzy_field_thresholds: dict[str, float],
-    field_schemas: dict[str, Any] | None = None,
+    *,
+    subfields: Sequence[str],
+    fuzzy_field_thresholds: Mapping[str, float],
+    field_schemas: Mapping[str, Any] | None = None,
 ) -> list[tuple[int, int]]:
-    assignment = _peel_exact_row_matches(actual_list, expected_list, subfields, fuzzy_field_thresholds, field_schemas)
+    assignment = peel_exact_row_matches(
+        actual_list,
+        expected_list,
+        subfields=subfields,
+        fuzzy_field_thresholds=fuzzy_field_thresholds,
+        field_schemas=field_schemas,
+    )
     pairs = list(assignment.pairs)
-    if not assignment.unmatched_actual_indices or not assignment.unmatched_expected_indices:
+    if len(assignment.unmatched_actual_indices) == 0 or len(assignment.unmatched_expected_indices) == 0:
         return pairs
 
     residual_actual = [actual_list[idx] for idx in assignment.unmatched_actual_indices]
@@ -368,73 +397,123 @@ def _assign_rows(
     # misses) rather than crashing the whole run -- a peel-only lower bound.
     if len(residual_actual) * len(residual_expected) > _MAX_RESIDUAL_ASSIGNMENT_CELLS:
         return pairs
-    cost = _mismatch_cost_matrix(residual_actual, residual_expected, subfields, fuzzy_field_thresholds, field_schemas)
+    cost = mismatch_cost_matrix(
+        residual_actual,
+        residual_expected,
+        subfields=subfields,
+        fuzzy_field_thresholds=fuzzy_field_thresholds,
+        field_schemas=field_schemas,
+    )
     row_ind, col_ind = linear_sum_assignment(cost)
     pairs.extend(
-        (assignment.unmatched_actual_indices[int(actual_idx)], assignment.unmatched_expected_indices[int(expected_idx)])
+        (
+            assignment.unmatched_actual_indices[int(actual_idx)],
+            assignment.unmatched_expected_indices[int(expected_idx)],
+        )
         for actual_idx, expected_idx in zip(row_ind, col_ind, strict=True)
     )
     return pairs
 
 
-def _is_array_schema(field_schema: dict[str, Any], expected_value: Any) -> bool:
-    field_type = field_schema.get("type")
-    return field_type == "array" or isinstance(expected_value, list)
+def is_value_sequence(value: Any) -> TypeGuard[Sequence[Any]]:
+    """List-like JSON arrays, not ``str`` / ``bytes`` (those are Sequences too)."""
+    return isinstance(value, Sequence) and not isinstance(value, (str, bytes))
 
 
-def _array_subfields(field_schema: dict[str, Any], expected_rows: Any) -> list[str]:
-    item_props = field_schema.get("items", {}).get("properties", {})
-    if item_props:
-        return list(item_props.keys())
-    if isinstance(expected_rows, list):
-        keys: set[str] = set()
-        for row in expected_rows:
-            if isinstance(row, dict):
-                keys.update(row.keys())
-        return sorted(keys)
-    return []
+def as_rows(value: Any) -> list[Any]:
+    return list(value) if is_value_sequence(value) else []
+
+
+def is_array_schema(field_schema: Any) -> bool:
+    """True when JSON Schema describes an array (incl. ``anyOf`` / ``oneOf`` / ``allOf``).
+
+    Combinator-wrapped arrays (``anyOf: [{type: array, items: ...}, {type: null}]``)
+    have no top-level ``type: array``; walk the same combinators as ``schema_items``.
+    Gold/pred values are not consulted — a list in the extraction does not make
+    a string field an array.
+    """
+    if not isinstance(field_schema, Mapping):
+        return False
+    raw = field_schema.get("type")
+    types = raw if isinstance(raw, list) else [raw]
+    if "array" in types or isinstance(field_schema.get("items"), dict):
+        return True
+    for key in ("anyOf", "oneOf", "allOf"):
+        for alt in field_schema.get(key) or []:
+            if is_array_schema(alt):
+                return True
+    return False
+
+
+def array_item_properties(field_schema: Any) -> Mapping[str, Any]:
+    """Column schemas for an array of objects: ``items.properties``, combinators flattened.
+
+    ``field_schema`` is the array node (possibly ``anyOf`` [array, null]). Same
+    ``schema_items`` / ``schema_properties`` helpers as extract GT lint. ``$ref``
+    is not followed; callers inline with ``resolve_refs`` first. The mapping is
+    not owned by the caller; do not mutate it.
+    """
+    if not isinstance(field_schema, Mapping):
+        return {}
+    return schema_properties(schema_items(field_schema))
+
+
+def array_subfield_names(field_schema: Mapping[str, Any]) -> Sequence[str]:
+    """Column names for one array of objects, from ``items.properties`` only."""
+    return list(array_item_properties(field_schema).keys())
 
 
 def _score_array(
     expected_rows: Any,
     actual_rows: Any,
-    subfields: list[str],
-    fuzzy_field_thresholds: dict[str, float],
-    field_schemas: dict[str, Any] | None = None,
+    *,
+    subfields: Sequence[str],
+    fuzzy_field_thresholds: Mapping[str, float],
+    field_schemas: Mapping[str, Any] | None = None,
 ) -> tuple[int, int, int, int, int]:
-    expected_list = expected_rows if isinstance(expected_rows, list) else []
-    actual_list = actual_rows if isinstance(actual_rows, list) else []
+    expected_list = as_rows(expected_rows)
+    actual_list = as_rows(actual_rows)
     expected_total = len(expected_list) * len(subfields)
     predicted_total = len(actual_list) * len(subfields)
 
-    if not expected_list or not subfields or not actual_list:
+    if len(expected_list) == 0 or len(subfields) == 0 or len(actual_list) == 0:
         return 0, expected_total, predicted_total, len(expected_list), len(actual_list)
 
     correct = 0
     for actual_idx, expected_idx in _assign_rows(
-        actual_list, expected_list, subfields, fuzzy_field_thresholds, field_schemas
+        actual_list,
+        expected_list,
+        subfields=subfields,
+        fuzzy_field_thresholds=fuzzy_field_thresholds,
+        field_schemas=field_schemas,
     ):
-        actual_dict = actual_list[actual_idx] if isinstance(actual_list[actual_idx], dict) else {}
-        expected_dict = expected_list[expected_idx] if isinstance(expected_list[expected_idx], dict) else {}
+        actual_dict = actual_list[actual_idx] if isinstance(actual_list[actual_idx], Mapping) else {}
+        expected_dict = expected_list[expected_idx] if isinstance(expected_list[expected_idx], Mapping) else {}
         correct += sum(
-            _cell_match(
+            cell_match(
                 expected_dict.get(field),
                 actual_dict.get(field),
                 field,
-                fuzzy_field_thresholds,
-                (field_schemas or {}).get(field),
+                fuzzy_field_thresholds=fuzzy_field_thresholds,
+                field_schema=(field_schemas or {}).get(field),
             )
             for field in subfields
         )
 
-    return correct, expected_total, predicted_total, len(expected_list), len(actual_list)
+    return (
+        correct,
+        expected_total,
+        predicted_total,
+        len(expected_list),
+        len(actual_list),
+    )
 
 
 def compute_array_record_match_counts(
     expected: Any,
     actual: Any,
-    data_schema: dict[str, Any] | None = None,
-    fuzzy_field_thresholds: dict[str, float] | None = None,
+    data_schema: Mapping[str, Any] | None = None,
+    fuzzy_field_thresholds: Mapping[str, float] | None = None,
     normalize_dates: bool = True,
 ) -> ArrayRecordMatchCounts | None:
     """Compute order-insensitive record matching counts for top-level arrays.
@@ -447,15 +526,16 @@ def compute_array_record_match_counts(
     sides are canonicalized to ISO format before comparison, aligned with the
     generic ``accuracy`` metric (json_subset_match).
     """
-    expected = _unwrap_value(expected)
-    actual = _unwrap_value(actual)
-    if not isinstance(expected, dict) or not isinstance(actual, dict):
+    expected = unwrap_value(expected)
+    actual = unwrap_value(actual)
+    if not isinstance(expected, Mapping) or not isinstance(actual, Mapping):
         return None
     if normalize_dates:
-        expected = _normalize_dates_deep(expected)
-        actual = _normalize_dates_deep(actual)
+        expected = normalize_dates_deep(expected)
+        actual = normalize_dates_deep(actual)
 
-    schema_props = (data_schema or {}).get("properties", {})
+    resolved = resolve_refs(data_schema) if isinstance(data_schema, Mapping) else {}
+    schema_props = schema_properties(resolved)
     fuzzy = dict(DEFAULT_FUZZY_FIELD_THRESHOLDS if fuzzy_field_thresholds is None else fuzzy_field_thresholds)
 
     correct = 0
@@ -470,19 +550,24 @@ def compute_array_record_match_counts(
         field_schema = schema_props.get(field, {})
         expected_value = expected.get(field)
         actual_value = actual.get(field)
-        if _is_array_schema(field_schema, expected_value):
-            subfields = _array_subfields(field_schema, expected_value)
-            if not subfields:
+        if is_array_schema(field_schema):
+            subfield_names = array_subfield_names(field_schema)
+            if len(subfield_names) == 0:
                 continue
-            item_props = field_schema.get("items", {}).get("properties", {}) if isinstance(field_schema, dict) else {}
-            field_schemas = item_props if isinstance(item_props, dict) else {}
+            field_schemas = array_item_properties(field_schema)
             (
                 array_correct,
                 array_expected_total,
                 array_predicted_total,
                 array_expected_rows,
                 array_predicted_rows,
-            ) = _score_array(expected_value, actual_value, subfields, fuzzy, field_schemas)
+            ) = _score_array(
+                expected_value,
+                actual_value,
+                subfields=subfield_names,
+                fuzzy_field_thresholds=fuzzy,
+                field_schemas=field_schemas,
+            )
             correct += array_correct
             expected_total += array_expected_total
             predicted_total += array_predicted_total
@@ -493,11 +578,17 @@ def compute_array_record_match_counts(
             expected_total += 1
             # An omitted key is an implicit null prediction and always counts in
             # the precision denominator (an omitted GT-null field matches via
-            # ``_cell_match(None, None)``, so gating on ``field in actual`` let
+            # ``cell_match(None, None)``, so gating on ``field in actual`` let
             # correct exceed predicted_total and precision run past 1.0).
             predicted_total += 1
             scalar_fields_scored += 1
-            if _cell_match(expected_value, actual_value, field, fuzzy, field_schema):
+            if cell_match(
+                expected_value,
+                actual_value,
+                field,
+                fuzzy_field_thresholds=fuzzy,
+                field_schema=field_schema,
+            ):
                 correct += 1
 
     if arrays_scored == 0 or expected_total <= 0:
@@ -517,7 +608,11 @@ def compute_array_record_match_counts(
 class ArrayRecordMatchMetric:
     """Metric bundle for long-array extraction quality."""
 
-    def __init__(self, fuzzy_field_thresholds: dict[str, float] | None = None, normalize_dates: bool = True):
+    def __init__(
+        self,
+        fuzzy_field_thresholds: Mapping[str, float] | None = None,
+        normalize_dates: bool = True,
+    ):
         self._fuzzy_field_thresholds = fuzzy_field_thresholds
         self._normalize_dates = normalize_dates
 
@@ -572,8 +667,16 @@ class ArrayRecordMatchMetric:
                     "denominator": "expected_data_points",
                 },
             ),
-            MetricValue(metric_name="array_record_precision", value=precision, metadata=prf_metadata),
-            MetricValue(metric_name="array_record_recall", value=recall, metadata=prf_metadata),
+            MetricValue(
+                metric_name="array_record_precision",
+                value=precision,
+                metadata=prf_metadata,
+            ),
+            MetricValue(
+                metric_name="array_record_recall",
+                value=recall,
+                metadata=prf_metadata,
+            ),
             MetricValue(metric_name="array_record_f1", value=f1, metadata=prf_metadata),
             MetricValue(
                 metric_name="array_record_row_count_ratio",
