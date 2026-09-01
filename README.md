@@ -67,12 +67,21 @@ Three tiers, kept separate because they differ in risk:
 | Tier | Transforms | Default |
 | --- | --- | --- |
 | Representational | digits, separators, diacritics, tatweel, bidi/zero-width marks, punctuation and era-marker spacing | on |
-| Structural | section-header rows, blank spacer rows | on |
+| Structural | section-header rows, blank spacer rows, column direction | on |
 | Orthographic | alef / ya / ta-marbuta variants | off — lossy, opt in with `--fold-letters` |
 
+Canon is applied **symmetrically by construction**: the scoring layer
+(`arabicfinbench/scoring.py`) canonicalises both sides inside one call and has
+no parameter to canonicalise one side only. Every result is stamped with the
+canon version and the named rules that fired per side, and `script_fidelity` —
+credit for preserving the page's digit script, measured on raw output — is
+reported in its own column, never folded into a P score.
+
 `scripts/afb_score_parse.py` reports all three passes side by side — `raw`,
-`text`, `struct`. Each is defensible and they differ substantially; quoting one
-without the others hides which a claim rests on.
+`text`, `struct` — plus the raw→struct delta. Each is defensible and they
+differ substantially; on the first document the *ranking flipped* between raw
+and canon. Quoting one pass without the others hides which a claim rests on.
+The full guard set is documented in [docs/fairness.md](docs/fairness.md).
 
 It also prints, per table, `rows_gt / rows_pred / sections / blanks`. When row
 counts still disagree after section removal, the ground truth and the system are
@@ -113,20 +122,31 @@ Additions sit alongside the upstream tree rather than replacing it:
 
 ```
 arabicfinbench/
-  canon/                  # canonical forms (implemented)
+  canon/                  # canonical forms: text + structure tiers, versioned
+  scoring.py              # the one scoring path (symmetric canon, guards, stamps)
+  guards.py               # mojibake / empty-prediction guards
+  provenance.py           # leaderboard row requirements + page-image hashing
+  determinism.py          # determinism classes and seed policy
+  leaderboard.py          # the generator and its refusals
   concepts/               # financial concept definitions (stub)
   dimensions/arithmetic/  # arithmetic evaluation dimension (stub)
-  gt/                     # ground truth (tracked)
+  gt/                     # ground truth + integrity code (admission gate,
+                          #   consensus rule, splits, freeze, corrections log)
   data/                   # local corpora (untracked; see data/README.md)
 scripts/afb_gt_to_sidecar.py   # raw GT -> harness sidecar + expected_markdown
-scripts/afb_score_parse.py     # raw vs canonical P scoring
-tests/arabicfinbench/     # tests for the overlay
+scripts/afb_score_parse.py     # raw | text | struct P scoring + diagnostics
+scripts/afb_import_datalab.py  # hand-run import (dev only; stamped as such)
+scripts/afb_leaderboard.py     # row assembly + admission (rejections named)
+scripts/afb_consensus.py       # consensus-against-GT flagging
+scripts/afb_freeze.py          # test-split sha256 commitment
+tests/arabicfinbench/     # tests for the overlay (one per fairness guard)
 src/extract_bench/        # upstream harness (modifications enumerated in NOTICE)
 ```
 
 `arabicfinbench/` is an importable package (declared in hatchling's
-`packages` and shipped in the wheel) - `canon/` and `dimensions/arithmetic/`
-are code the scorer imports, not data. `gt/` and `data/` remain data-only.
+`packages` and shipped in the wheel). `gt/` holds both the tracked ground
+truth and the code that gates it (schema validation, arithmetic admission,
+consensus flagging); `data/` remains data-only and untracked.
 
 Upstream's package name and import paths are deliberately left alone so that
 upstream changes can still be merged. The harness itself is modified in exactly

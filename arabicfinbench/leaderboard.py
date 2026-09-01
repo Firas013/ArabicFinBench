@@ -152,7 +152,7 @@ def build_dev_report(rows: list[LeaderboardRow], *, metrics: tuple[str, ...]) ->
     for metric in metrics:
         lines.append(f"\n### {metric}\n")
         lines.append("| system | " + " | ".join(PASSES) + " | script fidelity | status |")
-        lines.append("|" + " --- |" * (len(PASSES) + 2))
+        lines.append("|" + " --- |" * (len(PASSES) + 3))
         for row in rows:
             per_pass = {p: _mean([s.passes[p].get(metric, 0.0) for s in row.scores.values()]) for p in PASSES}
             fidelities = [s.script_fidelity for s in row.scores.values() if s.script_fidelity is not None]
