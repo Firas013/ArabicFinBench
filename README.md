@@ -54,17 +54,30 @@ metrics compare cell text literally, so these differences are scored as errors.
 **both the ground truth and the system output** before comparison — never to
 the ground truth alone, which would move the bias rather than remove it.
 
-Two tiers, kept separate because they differ in risk:
+Text is not the only axis on which two correct readings disagree. A section
+header — `الموجودات المتداولة` — is a sparse row to one system and a full-width
+`colspan` cell to another. Neither is a record, but they occupy different
+numbers of grid cells, so every row below one scores as a miss on a positional
+metric. `canon/structure.py` lifts section rows out of the grid on both sides
+and records them as `Section(label, before_row)`, keeping them available as the
+grouping context that concept tagging needs.
+
+Three tiers, kept separate because they differ in risk:
 
 | Tier | Transforms | Default |
 | --- | --- | --- |
 | Representational | digits, separators, diacritics, tatweel, bidi/zero-width marks, punctuation and era-marker spacing | on |
+| Structural | section-header rows, blank spacer rows | on |
 | Orthographic | alef / ya / ta-marbuta variants | off — lossy, opt in with `--fold-letters` |
 
-`scripts/afb_score_parse.py` reports the raw and canonical scores side by side.
-Both are shown deliberately: the raw score is what upstream's metrics produce,
-the canonical score is ArabicFinBench's P axis, and quoting one without the
-other hides which a claim rests on.
+`scripts/afb_score_parse.py` reports all three passes side by side — `raw`,
+`text`, `struct`. Each is defensible and they differ substantially; quoting one
+without the others hides which a claim rests on.
+
+It also prints, per table, `rows_gt / rows_pred / sections / blanks`. When row
+counts still disagree after section removal, the ground truth and the system are
+modelling the table differently, and no text rule will close it — the next
+convention mismatch shows up as a number rather than a debugging session.
 
 ```bash
 python scripts/afb_gt_to_sidecar.py <gt>.json <doc>.pdf   # GT -> harness sidecar
@@ -126,7 +139,13 @@ report assets. Both are pinned rather than assumed.
 ```bash
 uv sync --extra dev --python 3.12    # add --extra runners for provider integrations
 uv run pytest -q
+bash scripts/install-hooks.sh        # refuse commits of corpus documents
 ```
+
+`install-hooks.sh` points `core.hooksPath` at the tracked `scripts/hooks/`, so
+hook changes reach everyone on their next pull. The same rule runs in CI, which
+does not depend on a hook being installed — or on its executable bit surviving
+an edit from a Windows checkout.
 
 Node version is pinned in `.node-version` (20.19.5). Node older than 14 fails
 six report-asset tests with `SyntaxError: Unexpected token '?'` — the report JS
