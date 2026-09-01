@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Assemble leaderboard rows from stored runs — and let the generator refuse.
+
+Provenance is derived mechanically wherever the harness already recorded it
+(mode from the pipeline config, cost and latency from the evaluation CSV,
+timestamps from the result file, page-image hashes from the source PDF) and
+supplemented from ``output/<pipeline>/_afb_provenance.json`` for what only the
+operator knows (model version string, seed count). Nothing is invented: a gap
+survives into the row and the generator rejects the row by the gap's name.
+
+Hand-imported results are detected from their stamped provenance and shown in
+the dev report only; the leaderboard requires the API adapter path.
+
+Usage::
+
+    python scripts/afb_leaderboard.py --pipeline llamaparse_agentic \\
+        --pipeline datalab_accurate --pipeline datalab_web --input-dir test_1
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from pathlib import Path
+
+from arabicfinbench.canon.version import CANON_VERSION
+from arabicfinbench.determinism import declare
+from arabicfinbench.leaderboard import LeaderboardRow, build_dev_report, build_leaderboard, validate_row
+from arabicfinbench.provenance import NO_PROMPT, Provenance, page_image_hashes
+from arabicfinbench.scoring import DocumentScore, score_document
+from extract_bench.test_cases.loader import load_test_cases
+
+METRICS = ("table_record_match", "grits_trm_composite", "grits_con")
+
+
+def _harness_facts(output_dir: Path) -> dict:
+    """Provenance the harness already recorded, taken from its artefacts."""
+    facts: dict = {}
+    metadata_path = output_dir / "_metadata.json"
+    if metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        config = (metadata.get("pipeline") or {}).get("config") or {}
+        facts["mode"] = str(config.get("mode") or config.get("tier") or "")
+    csv_path = output_dir / "_evaluation_results.csv"
+    if csv_path.exists():
+        with csv_path.open(encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        if rows:
+            costs = [float(r["cost_per_page_usd"]) for r in rows if r.get("cost_per_page_usd")]
+            latencies = sorted(float(r["latency_ms"]) for r in rows if r.get("latency_ms"))
+            if costs:
+                facts["cost_per_page_usd"] = sum(costs) / len(costs)
+            if latencies:
+                facts["median_latency_ms"] = latencies[len(latencies) // 2]
+    return facts
+
+
+def _build_row(
+    pipeline: str,
+    output_root: Path,
+    cases: list,
+    pdf_hashes: dict[str, tuple[str, ...]],
+) -> LeaderboardRow:
+    output_dir = output_root / pipeline
+    scores: dict[str, DocumentScore] = {}
+    hand_imported = False
+    run_timestamp = ""
+    all_hashes: list[str] = []
+
+    for case in cases:
+        result_path = output_dir / f"{case.test_id}.result.json"
+        if not result_path.exists():
+            continue
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+        if (payload.get("provenance") or {}).get("hand_imported"):
+            hand_imported = True
+        run_timestamp = run_timestamp or str(payload.get("started_at") or "")
+        markdown = (payload.get("output") or {}).get("markdown") or ""
+        scores[case.test_id] = score_document(
+            case.expected_markdown or "", markdown, source=f"{pipeline}/{case.test_id}"
+        )
+        all_hashes.extend(pdf_hashes.get(case.test_id, ()))
+
+    facts = _harness_facts(output_dir)
+    overrides_path = output_dir / "_afb_provenance.json"
+    overrides = json.loads(overrides_path.read_text(encoding="utf-8")) if overrides_path.exists() else {}
+
+    provenance = Provenance(
+        adapter=pipeline,
+        model_version=str(overrides.get("model_version", "")),
+        mode=str(overrides.get("mode", facts.get("mode", ""))),
+        canon_version=CANON_VERSION,
+        cost_per_page_usd=overrides.get("cost_per_page_usd", facts.get("cost_per_page_usd")),
+        median_latency_ms=overrides.get("median_latency_ms", facts.get("median_latency_ms")),
+        seed_count=overrides.get("seed_count"),
+        run_timestamp=str(overrides.get("run_timestamp", run_timestamp)),
+        page_image_hashes=tuple(all_hashes),
+        prompt_sha256=str(overrides.get("prompt_sha256", NO_PROMPT)),
+        hand_imported=hand_imported,
+        reference_implementation=bool(overrides.get("reference_implementation", False)),
+    )
+    determinism = declare(pipeline, sampled=bool(overrides.get("sampled", False)))
+    return LeaderboardRow(provenance=provenance, scores=scores, determinism=determinism)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--pipeline", required=True, action="append")
+    ap.add_argument("--input-dir", required=True, type=Path)
+    ap.add_argument("--output-root", type=Path, default=Path("output"))
+    ap.add_argument("--out", type=Path, default=None, help="write the leaderboard markdown here (stdout otherwise)")
+    args = ap.parse_args()
+
+    cases = load_test_cases(args.input_dir, product_type="PARSE")
+    pdf_hashes = {case.test_id: page_image_hashes(Path(case.file_path)) for case in cases}
+
+    rows = [_build_row(p, args.output_root, cases, pdf_hashes) for p in args.pipeline]
+
+    admitted: list[LeaderboardRow] = []
+    print("== admission ==")
+    for row in rows:
+        try:
+            validate_row(row)
+        except Exception as exc:  # noqa: BLE001 - every rejection is reported, by type and name
+            print(f"  REJECTED {row.provenance.adapter}: {type(exc).__name__}: {exc}")
+        else:
+            print(f"  admitted {row.provenance.adapter}")
+            admitted.append(row)
+
+    print(build_dev_report(rows, metrics=METRICS))
+
+    if admitted:
+        table = build_leaderboard(admitted, metrics=METRICS)
+        if args.out:
+            args.out.write_text(table, encoding="utf-8")
+            print(f"leaderboard written to {args.out}")
+        else:
+            print("== leaderboard (admitted rows only) ==")
+            print(table)
+    else:
+        print("no rows admitted to the leaderboard")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
