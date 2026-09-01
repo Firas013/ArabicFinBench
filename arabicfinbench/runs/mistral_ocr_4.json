@@ -1,0 +1,7 @@
+{
+  "model_version": "mistral-ocr-4-0",
+  "mode": "ocr",
+  "seed_count": 1,
+  "sampled": false,
+  "_mode_note": "Mistral's pipeline config carries 'model', not 'mode', so nothing is derivable and the mode is operator-stated. The two registered Mistral pipelines differ by endpoint behaviour: mistral_ocr_4 is plain OCR, mistral_ocr_4_annotation adds vision annotation. The leaderboard correctly rejected this row until the mode was declared."
+}
