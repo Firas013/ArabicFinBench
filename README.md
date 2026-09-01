@@ -43,6 +43,40 @@ that parses imperfectly but never miscalculates, which inverts the ordering that
 matters for financial use. Any comparison that quotes one ArabicFinBench number
 is misusing the benchmark.
 
+## Canonicalisation
+
+Arabic financial documents are transcribed inconsistently in ways that carry no
+information. `٨٣٩,٨٢١` and `839,821` are the same number; `٢٠٢٤ م` and `٢٠٢٤م`
+are the same year; a bidi control character is invisible. Upstream's table
+metrics compare cell text literally, so these differences are scored as errors.
+
+`arabicfinbench/canon/` defines the canonical forms, and they are applied to
+**both the ground truth and the system output** before comparison — never to
+the ground truth alone, which would move the bias rather than remove it.
+
+Two tiers, kept separate because they differ in risk:
+
+| Tier | Transforms | Default |
+| --- | --- | --- |
+| Representational | digits, separators, diacritics, tatweel, bidi/zero-width marks, punctuation and era-marker spacing | on |
+| Orthographic | alef / ya / ta-marbuta variants | off — lossy, opt in with `--fold-letters` |
+
+`scripts/afb_score_parse.py` reports the raw and canonical scores side by side.
+Both are shown deliberately: the raw score is what upstream's metrics produce,
+the canonical score is ArabicFinBench's P axis, and quoting one without the
+other hides which a claim rests on.
+
+```bash
+python scripts/afb_gt_to_sidecar.py <gt>.json <doc>.pdf   # GT -> harness sidecar
+extract-bench run <pipeline> --input_dir <dir>            # inference + raw score
+python scripts/afb_score_parse.py --pipeline <pipeline> --input-dir <dir>
+```
+
+Canonicalisation raises scores, so it is worth stating what it is not: it
+normalises *representation*, never value. It will not turn a misread digit into
+a correct one, and a system that reports the wrong figure scores wrong under
+canon exactly as it does raw.
+
 ## What ArabicFinBench does not claim
 
 - **It is not a general Arabic NLP benchmark.** Performance here says nothing
@@ -66,11 +100,13 @@ Additions sit alongside the upstream tree rather than replacing it:
 
 ```
 arabicfinbench/
-  canon/                  # canonical forms
-  concepts/               # financial concept definitions
-  dimensions/arithmetic/  # arithmetic evaluation dimension
+  canon/                  # canonical forms (implemented)
+  concepts/               # financial concept definitions (stub)
+  dimensions/arithmetic/  # arithmetic evaluation dimension (stub)
   gt/                     # ground truth (tracked)
   data/                   # local corpora (untracked; see data/README.md)
+scripts/afb_gt_to_sidecar.py   # raw GT -> harness sidecar + expected_markdown
+scripts/afb_score_parse.py     # raw vs canonical P scoring
 tests/arabicfinbench/     # tests for the overlay
 src/extract_bench/        # upstream harness, unmodified
 ```
