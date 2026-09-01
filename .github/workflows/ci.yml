@@ -37,6 +37,25 @@ jobs:
           fi
           echo "no corpus documents tracked"
 
+      # Guard 10: the benchmark reports per dimension, raw and canon, never one
+      # number. The generator refuses combined scores in code; this catches a
+      # hand-edited table sneaking an overall column into a tracked file.
+      - name: No overall column in leaderboard files
+        run: |
+          # docs/upstream_leaderboard.csv is ExtractBench's own table preserved
+          # verbatim for provenance; it keeps upstream's format and is labelled
+          # as not being ArabicFinBench results.
+          found=$(git ls-files -z '*leaderboard*' \
+            | grep -zv '^docs/upstream_leaderboard\.csv$' \
+            | xargs -0 grep -liE '(^|[|,])[[:space:]]*overall[[:space:]]*([|,]|$)' 2>/dev/null || true)
+          if [ -n "$found" ]; then
+            echo "ERROR: 'overall' column found in leaderboard file(s):" >&2
+            printf '  %s\n' $found >&2
+            echo "ArabicFinBench never emits a combined score. See README." >&2
+            exit 1
+          fi
+          echo "no overall column in tracked leaderboard files"
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:

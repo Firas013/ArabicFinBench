@@ -57,23 +57,39 @@ def main() -> int:
     args = ap.parse_args()
 
     export = json.loads(args.export.read_text(encoding="utf-8"))
+
+    from arabicfinbench.guards import assert_clean_encoding
+
+    # A mojibake export would score as a catastrophic parse failure that never
+    # happened; refuse it here, by name, before anything downstream sees it.
+    assert_clean_encoding(json.dumps(export, ensure_ascii=False)[:20000], source=f"import: {args.export.name}")
+
     pages = page_html(export)
     if not pages:
         print(f"{args.export}: no Page blocks with html found")
         return 1
 
+    empty_pages = [
+        block.get("page", i)
+        for i, block in enumerate(export.get("children") or [])
+        if isinstance(block, dict) and block.get("block_type") == "Page" and not (block.get("html") or "").strip()
+    ]
     markdown = "\n\n".join(pages)
     result = {
         "request": {"example_id": args.test_id},
         "pipeline_name": args.pipeline,
         "product_type": "parse",
-        # Kept so the origin of a hand-run is never guessed at later.
+        # Kept so the origin of a hand-run is never guessed at later, and so
+        # the leaderboard generator can refuse it: hand imports are dev-only.
         "raw_output": {"_config": {"output_format": "html,json"}, "_source": str(args.export.name)},
+        "provenance": {"hand_imported": True},
         "output": {
             "task_type": "parse",
             "example_id": args.test_id,
             "pipeline_name": args.pipeline,
             "markdown": markdown,
+            # Empty pages are zeros on the record, never silently dropped.
+            "empty_pages": empty_pages,
         },
     }
 
@@ -84,6 +100,9 @@ def main() -> int:
     tables = markdown.lower().count("<table")
     print(f"wrote {dest}")
     print(f"  pages: {len(pages)}   tables: {tables}   chars: {len(markdown)}")
+    print("  provenance: hand_imported (dev report only; blocked from the leaderboard)")
+    if empty_pages:
+        print(f"  EMPTY pages (score zero, listed, never dropped): {empty_pages}")
     return 0
 
 
