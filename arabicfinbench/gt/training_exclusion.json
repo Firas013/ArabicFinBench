@@ -1,0 +1,5 @@
+{
+  "_comment": "Every document that has ever touched any of our own training sets (rec v6-v13, layout, V3), by document id and content sha256. The test split is built from documents NOT in this list; check_training_exclusion() turns that claim into a failing build. TO BE POPULATED by the benchmark authors from the training-set inventories before the first freeze - an empty list here is a statement that nothing has been inventoried yet, not that nothing overlaps.",
+  "sources": ["rec v6", "rec v7", "rec v8", "rec v9", "rec v10", "rec v11", "rec v12", "rec v13", "layout", "V3"],
+  "documents": []
+}

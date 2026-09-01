@@ -1,0 +1,5 @@
+{
+  "_comment": "Split manifest. dev: images and ground truth public. test: images public, ground truth withheld until freeze. Validated by arabicfinbench/gt/contamination.py; the test split must be disjoint from training_exclusion.json. Empty until the public corpus lands - Test_1 is a private development fixture and is deliberately NOT listed.",
+  "dev": [],
+  "test": []
+}
