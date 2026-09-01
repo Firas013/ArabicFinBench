@@ -5,6 +5,23 @@ from extract_bench.schemas.pipeline import PipelineSpec
 
 _PROVIDER_REGISTRY: dict[str, type[Provider]] = {}
 
+# Provider modules that failed to import, by module name. Lazy loading means a
+# missing SDK is tolerated at import time; this record exists so the true
+# cause resurfaces at use time instead of presenting as an unregistered
+# provider. (A missing transitive dependency such as PIL once surfaced as
+# "No provider registered for 'llamaparse'".)
+_IMPORT_FAILURES: dict[str, BaseException] = {}
+
+
+def record_import_failure(module_name: str, exc: BaseException) -> None:
+    """Remember why a provider module failed to import, for later diagnosis."""
+    _IMPORT_FAILURES[module_name] = exc
+
+
+def import_failures() -> dict[str, BaseException]:
+    """Provider modules that failed to import, by module name."""
+    return dict(_IMPORT_FAILURES)
+
 
 def register_provider(provider_name: str) -> Callable[[type[Provider]], type[Provider]]:
     """
@@ -41,7 +58,16 @@ def create_provider(pipeline: PipelineSpec) -> Provider:
     provider_name = pipeline.provider_name
     provider_cls = _PROVIDER_REGISTRY.get(provider_name)
     if provider_cls is None:
-        raise ProviderConfigError(f"No provider registered for '{provider_name}'")
+        message = f"No provider registered for '{provider_name}'."
+        if _IMPORT_FAILURES:
+            details = "; ".join(
+                f"{module}: {exc!r}" for module, exc in sorted(_IMPORT_FAILURES.items())
+            )
+            message += (
+                f" {len(_IMPORT_FAILURES)} provider module(s) failed to import"
+                f" and one of them may define it: {details}"
+            )
+        raise ProviderConfigError(message)
 
     return provider_cls(
         provider_name=provider_name,

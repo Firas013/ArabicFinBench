@@ -121,7 +121,7 @@ arabicfinbench/
 scripts/afb_gt_to_sidecar.py   # raw GT -> harness sidecar + expected_markdown
 scripts/afb_score_parse.py     # raw vs canonical P scoring
 tests/arabicfinbench/     # tests for the overlay
-src/extract_bench/        # upstream harness, unmodified
+src/extract_bench/        # upstream harness (modifications enumerated in NOTICE)
 ```
 
 `arabicfinbench/` is an importable package (declared in hatchling's
@@ -129,7 +129,11 @@ src/extract_bench/        # upstream harness, unmodified
 are code the scorer imports, not data. `gt/` and `data/` remain data-only.
 
 Upstream's package name and import paths are deliberately left alone so that
-upstream changes can still be merged.
+upstream changes can still be merged. The harness itself is modified in exactly
+one way, enumerated in [NOTICE](NOTICE): the provider registry surfaces the
+real import error behind a missing provider instead of swallowing it — a
+missing transitive dependency once presented as "no provider registered", which
+is the kind of silent failure this benchmark refuses on principle.
 
 ## Environment
 
