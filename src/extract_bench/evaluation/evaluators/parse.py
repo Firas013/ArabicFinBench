@@ -57,8 +57,23 @@ from extract_bench.test_cases.schema import ExtractTestCase, ParseTestCase, Test
 
 
 def _has_html_tables(content: str) -> bool:
-    """Check if content contains HTML tables."""
-    return "<table" in content.lower()
+    """Whether content contains any table the extraction stage can read.
+
+    Despite the name (kept for callers), this is markup-agnostic: it answers
+    "will ``extract_normalized_tables`` find a table here?", which is the
+    question the callers actually ask. Testing for the literal string
+    ``<table`` sent every markdown-emitting parser down the "actual has no
+    tables" branch, which scores 0.0 on every table metric — a format mismatch
+    reported as total failure.
+    """
+    if "<table" in content.lower():
+        return True
+    from extract_bench.evaluation.metrics.parse.table_extraction import (
+        _html_table_spans,
+        _markdown_table_spans,
+    )
+
+    return bool(_markdown_table_spans(content, _html_table_spans(content)))
 
 
 logger = logging.getLogger(__name__)

@@ -215,6 +215,12 @@ def canonicalize_markup_traced(markup: str, *, fold_letters: bool = False) -> tu
     would change the table's structure rather than its content. Only the spans
     between tags are touched. Returns the canonical markup and the union of
     rule names that fired anywhere in the document.
+
+    Canonicalisation runs **per line**. Newlines are insignificant inside an
+    HTML text node but load-bearing in a markdown table, where each row is a
+    line; collapsing them folded an entire pipe table onto one line and left
+    the table metrics with nothing to parse. Whitespace *within* a line is
+    still collapsed, which is the part that was ever a convention.
     """
     if not markup:
         return "", ()
@@ -223,9 +229,13 @@ def canonicalize_markup_traced(markup: str, *, fold_letters: bool = False) -> tu
     for i, part in enumerate(parts):
         if part.startswith("<") and part.endswith(">"):
             continue
-        parts[i], part_fired = canonicalize_traced(part, fold_letters=fold_letters)
-        fired.update(part_fired)
-    return "".join(parts), tuple(sorted(fired))
+        lines = []
+        for line in part.split("\n"):
+            canonical_line, line_fired = canonicalize_traced(line, fold_letters=fold_letters)
+            lines.append(canonical_line)
+            fired.update(line_fired)
+        parts[i] = "\n".join(lines)
+    return "\n".join("".join(parts).split("\n")), tuple(sorted(fired))
 
 
 def canonicalize_markup(markup: str, *, fold_letters: bool = False) -> str:
