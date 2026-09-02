@@ -36,6 +36,12 @@ from arabicfinbench.canon import (
     canonicalize_structure,
 )
 from arabicfinbench.canon.version import CANON_VERSION
+from arabicfinbench.dimensions.cells import (
+    CoverageReport,
+    NumericReport,
+    compute_coverage,
+    compute_numeric_exactness,
+)
 from arabicfinbench.guards import assert_clean_encoding
 
 PASSES = ("raw", "text", "struct")
@@ -73,6 +79,11 @@ class DocumentScore:
     canon_version: str = CANON_VERSION
     empty_prediction: bool = False
     notes: tuple[str, ...] = field(default_factory=tuple)
+    # Cell-level P metrics, computed on the struct-canonical grids so column
+    # order and section rows cannot create false misses. None when the
+    # document was not scored (empty prediction, or externally reported).
+    coverage: CoverageReport | None = None
+    numeric: NumericReport | None = None
 
     @property
     def raw_to_struct_delta(self) -> dict[str, float]:
@@ -148,6 +159,25 @@ def script_fidelity(gt_markup: str, raw_pred_markup: str) -> float | None:
     return sum(1 for r in pred_runs if _run_of_script(r) == page_script) / len(pred_runs)
 
 
+def _grids(expected: str, actual: str) -> tuple[list[list[list[str]]], list[list[list[str]]]]:
+    """Cell grids for both sides, from the same stage the table metrics use.
+
+    Going through ``extract_table_pairs`` rather than parsing separately means
+    coverage and numeric exactness see exactly the tables GriTS and TRM saw --
+    a disagreement between the cell metrics and the table metrics would
+    otherwise be unattributable.
+    """
+    from extract_bench.evaluation.metrics.parse.table_extraction import (  # type: ignore[import-untyped]
+        extract_table_pairs,
+    )
+
+    gt_tables, pred_tables, _ = extract_table_pairs(expected, actual)
+    to_grid = lambda tables: [  # noqa: E731 - local shorthand, used twice
+        [[str(cell) for cell in row] for row in t.table_data.data] for t in tables
+    ]
+    return to_grid(gt_tables), to_grid(pred_tables)
+
+
 def score_document(
     expected_markup: str,
     actual_markup: str,
@@ -207,9 +237,16 @@ def score_document(
         "struct": run_pass(struct_expected, struct_actual),
     }
 
+    # Cell metrics on the struct-canonical grids: column order and section
+    # rows are already reconciled there, so a "missing" cell is missing rather
+    # than merely somewhere else.
+    gt_grids, pred_grids = _grids(struct_expected, struct_actual)
+
     return DocumentScore(
         passes=passes,
         gt_trace=SideTrace(gt_text_fired, gt_struct_fired, tuple(gt_tables)),
         pred_trace=SideTrace(pred_text_fired, pred_struct_fired, tuple(pred_tables)),
         script_fidelity=script_fidelity(expected_markup, actual_markup),
+        coverage=compute_coverage(gt_grids, pred_grids),
+        numeric=compute_numeric_exactness(gt_grids, pred_grids),
     )
