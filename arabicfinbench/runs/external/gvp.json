@@ -1,0 +1,22 @@
+{
+  "adapter": "gvp",
+  "display_name": "GVP",
+  "model_version": "unreported",
+  "mode": "unreported",
+  "reference_implementation": true,
+  "external_report": true,
+  "reported_by": "benchmark authors, run on a separate machine; output artefacts unavailable on this device",
+  "reported_canon_version": "unknown",
+  "cost_per_page_usd": null,
+  "median_latency_ms": null,
+  "_cost_note": "reported as 'local' - not a measured cost per page. A locally hosted system still has a cost; leaving it unquantified is a gap, not a zero.",
+  "_latency_note": "reported as 'not reported'.",
+  "document": "test_1/Test_1",
+  "reported_scores": {
+    "raw":    {"table_record_match": 0.864},
+    "struct": {"table_record_match": 0.844, "grits_con": 0.898}
+  },
+  "reported_script_fidelity": 1.0,
+  "reported_tables_paired": "5/5",
+  "_anomaly": "GVP is the only system whose table_record_match FALLS from raw to struct (0.864 -> 0.844). Every other system rises, because canon removes convention penalties rather than adding them. A fall means structural canon changed how GVP's tables align - worth checking against the artefacts, which are not available here."
+}
