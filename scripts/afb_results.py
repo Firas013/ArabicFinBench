@@ -120,6 +120,23 @@ def _fmt(value: float | None, places: int = 4) -> str:
     return "-" if value is None else f"{value:.{places}f}"
 
 
+def _display_name(system: str) -> str:
+    """The model's own name, for reading.
+
+    Pipeline ids keep the ``or_`` prefix because the route is part of a row's
+    identity — the same model served through OpenRouter and through its
+    vendor's API can differ, and the store must not conflate them. The prefix
+    is noise in a table a human reads, so it is dropped here and the routing is
+    stated once in a footnote instead.
+    """
+    from arabicfinbench.pipelines import OPENROUTER_VLMS
+
+    model = OPENROUTER_VLMS.get(system)
+    if model:
+        return model.split("/", 1)[-1]  # "qwen/qwen3.8-27b" -> "qwen3.8-27b"
+    return system
+
+
 def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None) -> str:
     ranked = [e for e in entries if e.status != "failed"]
     ranked = sorted(ranked, key=lambda e: -(e.passes.get("struct", {}).get("table_record_match") or 0))
@@ -138,7 +155,7 @@ def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None)
     for e in ranked:
         p = e.passes
         out.append(
-            f"| {e.system} | {_fmt(p.get('raw', {}).get('table_record_match'))} | "
+            f"| {_display_name(e.system)} | {_fmt(p.get('raw', {}).get('table_record_match'))} | "
             f"{_fmt(p.get('text', {}).get('table_record_match'))} | "
             f"**{_fmt(p.get('struct', {}).get('table_record_match'))}** | "
             f"{_fmt(p.get('struct', {}).get('grits_con'))} | "
@@ -150,7 +167,7 @@ def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None)
     out.append("|" + " --- |" * 8)
     for e in ranked:
         out.append(
-            f"| {e.system} | {_fmt(e.coverage)} | {_fmt(e.numeric_exact)} | {_fmt(e.digit_cer)} | "
+            f"| {_display_name(e.system)} | {_fmt(e.coverage)} | {_fmt(e.numeric_exact)} | {_fmt(e.digit_cer)} | "
             f"{_fmt(e.null_accuracy)} | {_fmt(e.null_fabricated)} | {_fmt(e.null_dropped)} | {e.null_judged} |"
         )
 
@@ -160,7 +177,8 @@ def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None)
     for e in ranked:
         latency = "-" if e.median_latency_ms is None else f"{e.median_latency_ms / 1000:.1f}s"
         out.append(
-            f"| {e.system} | {_fmt(e.script_fidelity)} | {_fmt(e.cost_per_page_usd)} | {latency} | {e.scored_at[:19]} |"
+            f"| {_display_name(e.system)} | {_fmt(e.script_fidelity)} | "
+            f"{_fmt(e.cost_per_page_usd)} | {latency} | {e.scored_at[:19]} |"
         )
 
     out.append(
@@ -169,13 +187,23 @@ def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None)
         "ground-truth authoring task.**"
     )
     out.append("\n**No combined P/E/F score is emitted, by construction.** See `docs/fairness.md` guard 10.")
+    routed = sorted(_display_name(e.system) for e in ranked if e.system.startswith("or_"))
+    if routed:
+        # The or_ prefix carried this in the row name; with clean names the
+        # routing has to be stated somewhere, because the same model served
+        # through a different route can differ.
+        out.append(
+            "\n*Served via OpenRouter rather than the vendor's own API: "
+            + ", ".join(routed)
+            + ". The store keeps these under distinct ids so the two routes are never conflated.*"
+        )
     failed = [e for e in entries if e.status == "failed"]
     if failed:
         out.append("\n## Did not produce output\n")
         out.append("| system | reason |")
         out.append("|" + " --- |" * 2)
         for e in failed:
-            out.append(f"| {e.system} | {e.notes[0] if e.notes else 'unknown'} |")
+            out.append(f"| {_display_name(e.system)} | {e.notes[0] if e.notes else 'unknown'} |")
         out.append(
             "\n*Scored zero on every dimension and listed here rather than "
             "dropped (guard 5). Ranked tables above exclude them: a zero from a "
@@ -183,7 +211,7 @@ def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None)
         )
 
     if hidden:
-        names = ", ".join(sorted(e.system for e in hidden))
+        names = ", ".join(sorted(_display_name(e.system) for e in hidden))
         out.append(
             f"\n*Not shown: {names} — console exports whose tier, cost and latency cannot be "
             f"verified. Still recorded in `results/scores.jsonl`; `--include-hand-imported` "
