@@ -241,3 +241,11 @@ arabicfinbench/data/*
 # See arabicfinbench/gt/CONVENTIONS.md section 6.
 test_1/
 fixtures_local/
+
+# Scored-results store. Upstream ignores "results/" as run scratch; ours is the
+# opposite - an append-only measurement record, stamped with the canon version
+# that produced each entry, and the thing that makes "did this number move"
+# answerable. Track it.
+!results/
+results/*
+!results/scores.jsonl
