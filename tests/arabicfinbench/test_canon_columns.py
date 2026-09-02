@@ -147,3 +147,56 @@ class TestStructureFiringNames:
         already = "<table><tr><td>نقد</td><td>٨٣٩</td></tr><tr><td>مخزون</td><td>٢٤</td></tr></table>"
         _, _, fired = canonicalize_structure(already)
         assert fired == ()
+
+
+class TestHeaderMarkupFold:
+    """<th> vs <td> around identical text is markup, not a reading difference.
+
+    Observed on Test_1: worth up to 0.40 TRM, in both directions — a model
+    penalised for using <td> as our own frozen prompt requires, and another
+    rewarded for happening to emit <th> like the annotator.
+    """
+
+    HEADER_TH = "<table><tr><th>البند</th><th>٢٠٢٤ م</th></tr><tr><td>نقد</td><td>٨٦٦</td></tr></table>"
+    HEADER_TD = "<table><tr><td>البند</td><td>٢٠٢٤ م</td></tr><tr><td>نقد</td><td>٨٦٦</td></tr></table>"
+
+    def test_th_folds_to_td(self) -> None:
+        from arabicfinbench.canon import fold_header_markup
+
+        assert "<th" not in fold_header_markup(self.HEADER_TH)
+
+    def test_both_markups_canonicalize_identically(self) -> None:
+        from arabicfinbench.canon import canonicalize_structure
+
+        a, _, _ = canonicalize_structure(self.HEADER_TH)
+        b, _, _ = canonicalize_structure(self.HEADER_TD)
+        assert a == b
+
+    def test_the_fold_is_reported_by_name(self) -> None:
+        from arabicfinbench.canon import canonicalize_structure
+
+        _, _, fired = canonicalize_structure(self.HEADER_TH)
+        assert "structure/header_markup" in fired
+
+    def test_a_document_without_th_does_not_fire_it(self) -> None:
+        from arabicfinbench.canon import canonicalize_structure
+
+        _, _, fired = canonicalize_structure(self.HEADER_TD)
+        assert "structure/header_markup" not in fired
+
+    def test_cell_text_survives_the_fold(self) -> None:
+        from arabicfinbench.canon import fold_header_markup
+
+        assert "البند" in fold_header_markup(self.HEADER_TH)
+        assert "٢٠٢٤ م" in fold_header_markup(self.HEADER_TH)
+
+    def test_the_two_markups_score_identically(self) -> None:
+        import pytest
+
+        from arabicfinbench.scoring import score_document
+
+        as_th = score_document(self.HEADER_TH, self.HEADER_TH, source="th/th")
+        as_td = score_document(self.HEADER_TH, self.HEADER_TD, source="th/td")
+        assert as_td.passes["struct"]["table_record_match"] == pytest.approx(
+            as_th.passes["struct"]["table_record_match"], abs=1e-9
+        ), "header tag alone changed the score"

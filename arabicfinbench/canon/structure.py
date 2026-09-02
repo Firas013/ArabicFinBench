@@ -307,6 +307,27 @@ def canonicalize_table_structure(table_html: str) -> tuple[str, TableReport]:
     return normalize_table_columns(stripped, report)
 
 
+_TH_TAG_RE = re.compile(r"<(/?)th\b", re.I)
+
+
+def fold_header_markup(markup: str) -> str:
+    """Render header cells as ``<td>`` so ``<th>`` is not a scored difference.
+
+    ``<th>`` and ``<td>`` around identical text are a markup convention, not a
+    difference in what was read. Table Record Match treats a header block
+    specially, so a system whose header cells carry the annotator's tag aligns
+    its rows against the ground truth's and one that uses the other tag does
+    not — on the first Arabic statement that was worth up to 0.40 TRM, in both
+    directions: a model penalised for using ``<td>``, and another rewarded for
+    happening to emit ``<th>``.
+
+    Folding to ``<td>`` rather than ``<th>`` is the safe direction: it removes
+    a claim about which row is a header rather than inventing one. Applied to
+    both sides, as every canonical form is.
+    """
+    return _TH_TAG_RE.sub(r"<\1td", markup)
+
+
 def canonicalize_structure(markup: str) -> tuple[str, list[TableReport], tuple[str, ...]]:
     """Apply the structural canon to every table in a markup string.
 
@@ -315,13 +336,20 @@ def canonicalize_structure(markup: str) -> tuple[str, list[TableReport], tuple[s
     """
     reports: list[TableReport] = []
 
+    # Header markup is folded first, so section detection, column ordering and
+    # every downstream metric see one tag rather than two conventions.
+    folded = fold_header_markup(markup)
+    header_markup_fired = folded != markup
+
     def _replace(match: re.Match[str]) -> str:
         out, report = canonicalize_table_structure(match.group(0))
         reports.append(report)
         return out
 
-    out = _TABLE_RE.sub(_replace, markup)
+    out = _TABLE_RE.sub(_replace, folded)
     fired: list[str] = []
+    if header_markup_fired:
+        fired.append("structure/header_markup")
     if any(r.sections_removed for r in reports):
         fired.append("structure/sections")
     if any(r.blank_rows for r in reports):
