@@ -59,4 +59,4 @@
 
 *Scored zero on every dimension and listed here rather than dropped (guard 5). Ranked tables above exclude them: a zero from a failed call is not a measurement of reading quality.*
 
-*Not shown: datalab_web, llamaparse_provided — console exports whose tier, cost and latency cannot be verified. Still recorded in `results/scores.jsonl`; `--include-hand-imported` shows them.*
+*Not shown: cohere_parse_5, datalab_web, llamaparse_provided — console exports whose tier, cost and latency cannot be verified. Still recorded in `results/scores.jsonl`; `--include-hand-imported` shows them.*
