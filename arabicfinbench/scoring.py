@@ -42,6 +42,7 @@ from arabicfinbench.dimensions.cells import (
     compute_coverage,
     compute_numeric_exactness,
 )
+from arabicfinbench.dimensions.nulls import NullReport, compute_null_correctness
 from arabicfinbench.guards import assert_clean_encoding
 
 PASSES = ("raw", "text", "struct")
@@ -84,6 +85,7 @@ class DocumentScore:
     # document was not scored (empty prediction, or externally reported).
     coverage: CoverageReport | None = None
     numeric: NumericReport | None = None
+    nulls: NullReport | None = None
 
     @property
     def raw_to_struct_delta(self) -> dict[str, float]:
@@ -249,4 +251,5 @@ def score_document(
         script_fidelity=script_fidelity(expected_markup, actual_markup),
         coverage=compute_coverage(gt_grids, pred_grids),
         numeric=compute_numeric_exactness(gt_grids, pred_grids),
+        nulls=compute_null_correctness(gt_grids, pred_grids),
     )
