@@ -79,6 +79,7 @@ OPENROUTER_VLMS: dict[str, str] = {
     "or_gpt_5_mini": "openai/gpt-5-mini",
     "or_mistral_medium_3_1": "mistralai/mistral-medium-3.1",
     "or_qwen3_8_27b": "qwen/qwen3.8-27b",
+    "or_qwen3_5_9b": "qwen/qwen3.5-9b",
 }
 
 
@@ -111,7 +112,14 @@ def register_arabicfinbench_pipelines(register_fn) -> None:  # type: ignore[no-u
                     # document as though it had seen all of it.
                     "all_pages": True,
                     "dpi": 200,
-                    "max_tokens": 16384,
+                    # Raised uniformly after qwen3.5-9b, a reasoning model,
+                    # spent the whole 16k budget thinking and returned no
+                    # content on at least one page. A ceiling that was never
+                    # reached cannot change a result, so this is a no-op for
+                    # every model already measured (highest observed reasoning
+                    # use was qwen3.7-flash at 4,583 tokens) and is a uniform
+                    # setting rather than per-model tuning.
+                    "max_tokens": 40000,
                     "timeout": 600,
                 },
             )
