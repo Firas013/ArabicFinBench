@@ -81,7 +81,7 @@ def _fmt(value: float | None, places: int = 4) -> str:
     return "-" if value is None else f"{value:.{places}f}"
 
 
-def show(entries: list[StoredScore]) -> str:
+def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None) -> str:
     entries = sorted(entries, key=lambda e: -(e.passes.get("struct", {}).get("table_record_match") or 0))
     canon = {e.canon_version for e in entries}
     out = [f"\n# ArabicFinBench — {DOCUMENT}  (canon {', '.join(sorted(canon))})\n"]
@@ -129,6 +129,13 @@ def show(entries: list[StoredScore]) -> str:
         "ground-truth authoring task.**"
     )
     out.append("\n**No combined P/E/F score is emitted, by construction.** See `docs/fairness.md` guard 10.")
+    if hidden:
+        names = ", ".join(sorted(e.system for e in hidden))
+        out.append(
+            f"\n*Not shown: {names} — console exports whose tier, cost and latency cannot be "
+            f"verified. Still recorded in `results/scores.jsonl`; `--include-hand-imported` "
+            f"shows them.*"
+        )
     return "\n".join(out) + "\n"
 
 
@@ -139,6 +146,14 @@ def main() -> int:
     ap.add_argument("--input-dir", type=Path, default=Path("test_1"))
     ap.add_argument("--output-root", type=Path, default=Path("output"))
     ap.add_argument("--out", type=Path, default=None, help="also write the rendered table here")
+    ap.add_argument(
+        "--include-hand-imported",
+        action="store_true",
+        help=(
+            "also show console exports. Off by default: their tier, cost and "
+            "latency are unverifiable, which is why the leaderboard refuses them"
+        ),
+    )
     args = ap.parse_args()
 
     if args.record:
@@ -149,7 +164,13 @@ def main() -> int:
         append(entries)
         print(f"appended {len(entries)} entrie(s) to {STORE}")
 
-    table = show(latest(document=DOCUMENT, canon_version=CANON_VERSION))
+    entries = latest(document=DOCUMENT, canon_version=CANON_VERSION)
+    hidden = [e for e in entries if e.status != "api"]
+    if not args.include_hand_imported:
+        entries = [e for e in entries if e.status == "api"]
+        table = show(entries, hidden=hidden)
+    else:
+        table = show(entries)
     print(table)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

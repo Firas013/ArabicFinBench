@@ -42,9 +42,14 @@ class TestTrackedDeclarations:
 
     @pytest.mark.parametrize("path", _declarations(), ids=lambda p: p.stem)
     def test_declarations_name_a_registered_adapter(self, path: Path) -> None:
+        # "Registered in this repository" spans both registries: upstream's
+        # auto-registered pipelines and the ones ArabicFinBench adds in its own
+        # overlay. A declaration naming neither is the thing to catch.
+        from arabicfinbench.pipelines import OPENROUTER_VLMS
         from extract_bench.inference.pipelines import list_pipelines
 
-        assert path.stem in set(list_pipelines()), f"{path.name} names an adapter not registered in this repository"
+        known = set(list_pipelines()) | set(OPENROUTER_VLMS)
+        assert path.stem in known, f"{path.name} names an adapter not registered in this repository"
 
 
 class TestDeclarationPrecedence:

@@ -151,27 +151,48 @@ class Qwen35Provider(Provider):
         self._dpi = self.base_config.get("dpi", 150)
         self._max_tokens = self.base_config.get("max_tokens", 16384)
         self._temperature = self.base_config.get("temperature", 0.1)
+        # Off by default: these pipelines were built for single-page inputs,
+        # and turning it on globally would change every existing result.
+        self._all_pages = bool(self.base_config.get("all_pages", False))
 
         api_key_env = self.base_config.get("api_key_env", "VLLM_API_KEY")
         self._api_key = os.environ.get(api_key_env, "")
 
-        self._prompt = PROMPT_LAYOUT if self._prompt_mode == "layout" else PROMPT_PARSE
+        # An explicit ``prompt`` in the config wins over the built-in modes. The
+        # prompt is part of the measurement for a VLM — a benchmark that cannot
+        # pin it cannot compare two models on equal terms — so it has to be
+        # settable and hashable by the caller rather than baked in here.
+        self._prompt = self.base_config.get("prompt") or (
+            PROMPT_LAYOUT if self._prompt_mode == "layout" else PROMPT_PARSE
+        )
 
     # ------------------------------------------------------------------
     # Image helpers
     # ------------------------------------------------------------------
 
-    def _pdf_to_image_with_size(self, pdf_path: Path) -> tuple[bytes, int, int]:
+    def _pdf_pages_with_size(self, pdf_path: Path) -> list[tuple[bytes, int, int]]:
+        """Render PDF pages to PNG.
+
+        Returns the first page only unless ``all_pages`` is set in the config.
+        The default preserves the single-page behaviour these pipelines were
+        built for; a multi-page document scored under it silently reports on
+        page 1 alone, which for a financial statement means most of the
+        document is never seen.
+        """
         try:
             from pdf2image import convert_from_path
 
             images = convert_from_path(pdf_path, dpi=self._dpi)
             if not images:
                 raise ProviderPermanentError(f"No pages found in PDF: {pdf_path}")
-            img = images[0]
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            return buf.getvalue(), img.width, img.height
+            if not self._all_pages:
+                images = images[:1]
+            rendered: list[tuple[bytes, int, int]] = []
+            for img in images:
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                rendered.append((buf.getvalue(), img.width, img.height))
+            return rendered
         except ImportError as e:
             raise ProviderPermanentError("pdf2image is required.") from e
         except ProviderPermanentError:
@@ -345,16 +366,29 @@ class Qwen35Provider(Provider):
 
         suffix = file_path.suffix.lower()
         if suffix == ".pdf":
-            image_bytes, img_w, img_h = self._pdf_to_image_with_size(file_path)
+            pages = self._pdf_pages_with_size(file_path)
         elif suffix in (".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"):
-            image_bytes, img_w, img_h = self._read_image_with_size(file_path)
+            pages = [self._read_image_with_size(file_path)]
         else:
             raise ProviderPermanentError(
                 f"Unsupported file type: {suffix}. Supported: .pdf, .png, .jpg, .jpeg, .webp, .tiff, .bmp"
             )
 
         try:
-            raw_output = asyncio.run(self._run_inference_async(image_bytes, img_w, img_h))
+            if len(pages) == 1:
+                image_bytes, img_w, img_h = pages[0]
+                raw_output = asyncio.run(self._run_inference_async(image_bytes, img_w, img_h))
+            else:
+                # One request per page, joined in page order. Each page is an
+                # independent transcription; nothing is inferred across the
+                # boundary, so a page that fails is a visible gap rather than a
+                # silently shortened document.
+                per_page = [
+                    asyncio.run(self._run_inference_async(image_bytes, img_w, img_h))
+                    for image_bytes, img_w, img_h in pages
+                ]
+                merged = "\n\n".join(str(p.get("markdown") or "") for p in per_page)
+                raw_output = {**per_page[0], "markdown": merged, "page_count": len(pages)}
             completed_at = datetime.now()
             latency_ms = int((completed_at - started_at).total_seconds() * 1000)
 

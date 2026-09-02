@@ -1,0 +1,9 @@
+{
+  "model_version": "openrouter:openai/gpt-5-mini",
+  "mode": "vlm-transcription",
+  "seed_count": 1,
+  "sampled": false,
+  "prompt_sha256": "361cb7f5d092315c9c7740ff6c01fcac7ce6ed9b3537f096f4dee93277d2f5d8",
+  "_prompt_note": "Frozen transcription prompt shared byte-identically by every VLM row (arabicfinbench/pipelines.py::PARSE_PROMPT). Editing it changes this hash, which is the intended alarm: results produced under different prompts are not comparable.",
+  "_route_note": "Served via OpenRouter, not the vendor's own API. The same model on a different route can differ; the or_ prefix keeps the two from being conflated."
+}
