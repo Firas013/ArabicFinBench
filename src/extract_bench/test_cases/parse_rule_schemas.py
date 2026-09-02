@@ -244,6 +244,48 @@ class ParseOrderRule(ParseRuleBase):
         return self
 
 
+class ParseMathRule(ParseRuleBase):
+    """An arithmetic identity the extracted figures must satisfy.
+
+    Fills ParseRuleType.MATH, which was declared in the taxonomy with no
+    schema, no evaluator and no dispatcher entry. Arithmetic stays a rule type
+    inside this engine rather than becoming a parallel dimension.
+
+    Cells are addressed by reference string; the evaluator resolves them
+    against the figures a system produced. Semantics and the exact-Fraction
+    reconciliation live in :mod:`arabicfinbench.dimensions.arithmetic.rule`.
+    """
+
+    type: Literal[ParseRuleType.MATH.value]
+    math_type: Literal[
+        "block_sum",
+        "roll_forward",
+        "cross_statement",
+        "note_to_line",
+        "tolerance_band",
+    ] = "block_sum"
+    total: str = Field(default="", description="Cell reference holding the stated total")
+    addends: list[str] = Field(default_factory=list, description="Cell references summed into the total")
+    base: str = Field(default="", description="tolerance_band: cell reference for the base amount")
+    rate: str = Field(default="", description="tolerance_band: the rate as printed on the page")
+    tolerance: str = Field(
+        default="0",
+        description=(
+            "Per-addend rounding tolerance, as a decimal string. Scaled by the "
+            "number of addends at evaluation time: each rounded figure "
+            "contributes its own error and a fixed tolerance would be too "
+            "tight for a long block and too loose for a short one."
+        ),
+    )
+    period: str = Field(default="", description="Reporting period this identity belongs to")
+    scope: str = Field(default="", description="Statement or note the identity is drawn from")
+    unit: str = Field(default="", description="Currency or unit the figures are stated in")
+    applicability: str = Field(
+        default="",
+        description="When this identity holds; an identity that does not apply is not a failure",
+    )
+
+
 class ParseTableRule(ParseRuleBase):
     type: Literal[ParseRuleType.TABLE.value]
     cell: str = ""
@@ -506,6 +548,7 @@ type ParseRule = (
     | ParseExtraContentRule
     | ParseBaselineRule
     | ParseOrderRule
+    | ParseMathRule
     | ParseTableRule
     | ParseTablesValuesRule
     | ParseTablesNumRowsRule
@@ -562,6 +605,7 @@ _RULE_TYPE_TO_MODEL: dict[str, type[ParseRule]] = {
     ParseRuleType.EXTRA_CONTENT.value: ParseExtraContentRule,
     ParseRuleType.BASELINE.value: ParseBaselineRule,
     ParseRuleType.ORDER.value: ParseOrderRule,
+    ParseRuleType.MATH.value: ParseMathRule,
     ParseRuleType.TABLE.value: ParseTableRule,
     ParseRuleType.TABLES_VALUES.value: ParseTablesValuesRule,
     ParseRuleType.TABLES_NUM_ROWS.value: ParseTablesNumRowsRule,
