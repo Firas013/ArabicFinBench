@@ -8,6 +8,7 @@
 | system | TRM raw | TRM text | TRM struct | GriTS struct | raw→canon Δ | tables | status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | or_gemini_3_5_flash_lite | 0.5843 | 0.5905 | **0.9421** | 0.9172 | 0.3578 | 5/5 | api |
+| or_qwen3_8_27b | 0.8222 | 0.8222 | **0.8765** | 0.9859 | 0.0542 | 5/5 | api |
 | or_qwen3_7_flash | 0.9052 | 0.9126 | **0.8738** | 0.9554 | -0.0314 | 5/6 | api |
 | llamaparse_agentic | 0.3195 | 0.8149 | **0.8466** | 0.9194 | 0.5271 | 5/5 | api |
 | llamaparse_agentic_plus | 0.6875 | 0.6875 | **0.8429** | 0.8894 | 0.1554 | 5/5 | api |
@@ -20,6 +21,7 @@
 | system | coverage | numeric exact | digit CER | null acc | fabricated | dropped | judged |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | or_gemini_3_5_flash_lite | 0.9495 | 0.9836 | 0.0173 | 0.8824 | 0.0323 | 0.0149 | 34 |
+| or_qwen3_8_27b | 0.9954 | 0.9180 | 0.0160 | 0.9677 | 0.0323 | 0.0000 | 31 |
 | or_qwen3_7_flash | 0.8165 | 0.6885 | 0.2716 | 0.4328 | 0.0645 | 0.1782 | 67 |
 | llamaparse_agentic | 0.9954 | 0.8197 | 0.1951 | 0.6579 | 0.1935 | 0.0347 | 38 |
 | llamaparse_agentic_plus | 0.9633 | 0.7049 | 0.2877 | 0.5556 | 0.1935 | 0.0693 | 45 |
@@ -32,6 +34,7 @@
 | system | script fidelity | $/page | latency | scored at |
 | --- | --- | --- | --- | --- |
 | or_gemini_3_5_flash_lite | 1.0000 | - | - | 2026-09-02T13:33:10 |
+| or_qwen3_8_27b | 1.0000 | - | - | 2026-09-02T13:41:39 |
 | or_qwen3_7_flash | 1.0000 | - | - | 2026-09-02T13:33:10 |
 | llamaparse_agentic | 0.2402 | 0.0125 | 37.9s | 2026-09-02T13:33:07 |
 | llamaparse_agentic_plus | 0.9947 | 0.0563 | 49.5s | 2026-09-02T13:33:07 |
