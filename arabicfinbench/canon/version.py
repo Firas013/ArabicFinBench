@@ -5,4 +5,4 @@ scored under different canon versions are not comparable, and the stamp is what
 makes that checkable instead of remembered.
 """
 
-CANON_VERSION = "0.3.0"
+CANON_VERSION = "0.4.0"
