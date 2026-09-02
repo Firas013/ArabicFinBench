@@ -78,6 +78,7 @@ OPENROUTER_VLMS: dict[str, str] = {
     "or_gemini_3_5_flash_lite": "google/gemini-3.5-flash-lite",
     "or_gpt_5_mini": "openai/gpt-5-mini",
     "or_mistral_medium_3_1": "mistralai/mistral-medium-3.1",
+    "or_qwen3_8_27b": "qwen/qwen3.8-27b",
 }
 
 
