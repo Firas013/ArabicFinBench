@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from arabicfinbench.canon.version import CANON_VERSION
@@ -56,7 +57,12 @@ def record(pipelines: list[str], *, input_dir: Path, output_root: Path) -> list[
         for case in cases:
             result = output_root / pipeline / f"{case.test_id}.result.json"
             if not result.exists():
-                print(f"  skip {pipeline}: no stored inference result")
+                # Guard 5: a failed call is scored zero and LISTED, never
+                # skipped. A model missing from the table because its run died
+                # is indistinguishable from one nobody tried.
+                reason = _failure_reason(output_root / pipeline)
+                entries.append(_failed_entry(pipeline, case.test_id, reason))
+                print(f"  recorded {pipeline} as FAILED: {reason}")
                 continue
             payload = json.loads(result.read_text(encoding="utf-8"))
             markdown = (payload.get("output") or {}).get("markdown") or ""
@@ -77,12 +83,46 @@ def record(pipelines: list[str], *, input_dir: Path, output_root: Path) -> list[
     return entries
 
 
+def _failure_reason(output_dir: Path) -> str:
+    """The provider's own error text, so a failure row says why."""
+    errors = output_dir / "_errors.json"
+    if not errors.exists():
+        return "no inference result produced"
+    try:
+        payload = json.loads(errors.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return "no inference result produced"
+    items = payload if isinstance(payload, list) else payload.get("errors", [])
+    for item in items:
+        text = str((item or {}).get("error") or "").strip()
+        if text:
+            return text[:160]
+    return "no inference result produced"
+
+
+def _failed_entry(pipeline: str, document: str, reason: str) -> StoredScore:
+    """A zeroed row that names its own cause."""
+    from arabicfinbench.canon.version import CANON_VERSION
+    from arabicfinbench.scoring import HEADLINE_METRICS, PASSES
+
+    return StoredScore(
+        system=pipeline,
+        document=document,
+        canon_version=CANON_VERSION,
+        scored_at=datetime.now(UTC).isoformat(),
+        passes={p: dict.fromkeys(HEADLINE_METRICS, 0.0) for p in PASSES},
+        status="failed",
+        notes=(reason,),
+    )
+
+
 def _fmt(value: float | None, places: int = 4) -> str:
     return "-" if value is None else f"{value:.{places}f}"
 
 
 def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None) -> str:
-    entries = sorted(entries, key=lambda e: -(e.passes.get("struct", {}).get("table_record_match") or 0))
+    ranked = [e for e in entries if e.status != "failed"]
+    ranked = sorted(ranked, key=lambda e: -(e.passes.get("struct", {}).get("table_record_match") or 0))
     canon = {e.canon_version for e in entries}
     out = [f"\n# ArabicFinBench — {DOCUMENT}  (canon {', '.join(sorted(canon))})\n"]
     out.append(
@@ -95,7 +135,7 @@ def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None)
     out.append("## P — table metrics, raw | text | struct\n")
     out.append("| system | TRM raw | TRM text | TRM struct | GriTS struct | raw→canon Δ | tables | status |")
     out.append("|" + " --- |" * 8)
-    for e in entries:
+    for e in ranked:
         p = e.passes
         out.append(
             f"| {e.system} | {_fmt(p.get('raw', {}).get('table_record_match'))} | "
@@ -108,7 +148,7 @@ def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None)
     out.append("\n## P — cell metrics, and E — null correctness\n")
     out.append("| system | coverage | numeric exact | digit CER | null acc | fabricated | dropped | judged |")
     out.append("|" + " --- |" * 8)
-    for e in entries:
+    for e in ranked:
         out.append(
             f"| {e.system} | {_fmt(e.coverage)} | {_fmt(e.numeric_exact)} | {_fmt(e.digit_cer)} | "
             f"{_fmt(e.null_accuracy)} | {_fmt(e.null_fabricated)} | {_fmt(e.null_dropped)} | {e.null_judged} |"
@@ -117,7 +157,7 @@ def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None)
     out.append("\n## Diagnostics\n")
     out.append("| system | script fidelity | $/page | latency | scored at |")
     out.append("|" + " --- |" * 5)
-    for e in entries:
+    for e in ranked:
         latency = "-" if e.median_latency_ms is None else f"{e.median_latency_ms / 1000:.1f}s"
         out.append(
             f"| {e.system} | {_fmt(e.script_fidelity)} | {_fmt(e.cost_per_page_usd)} | {latency} | {e.scored_at[:19]} |"
@@ -129,6 +169,19 @@ def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None)
         "ground-truth authoring task.**"
     )
     out.append("\n**No combined P/E/F score is emitted, by construction.** See `docs/fairness.md` guard 10.")
+    failed = [e for e in entries if e.status == "failed"]
+    if failed:
+        out.append("\n## Did not produce output\n")
+        out.append("| system | reason |")
+        out.append("|" + " --- |" * 2)
+        for e in failed:
+            out.append(f"| {e.system} | {e.notes[0] if e.notes else 'unknown'} |")
+        out.append(
+            "\n*Scored zero on every dimension and listed here rather than "
+            "dropped (guard 5). Ranked tables above exclude them: a zero from a "
+            "failed call is not a measurement of reading quality.*"
+        )
+
     if hidden:
         names = ", ".join(sorted(e.system for e in hidden))
         out.append(
@@ -165,9 +218,11 @@ def main() -> int:
         print(f"appended {len(entries)} entrie(s) to {STORE}")
 
     entries = latest(document=DOCUMENT, canon_version=CANON_VERSION)
-    hidden = [e for e in entries if e.status != "api"]
+    # Failures are not hidden — they get their own section. Only unverifiable
+    # console exports are withheld, and only from the leaderboard view.
+    hidden = [e for e in entries if e.status in ("hand-imported", "externally-reported")]
     if not args.include_hand_imported:
-        entries = [e for e in entries if e.status == "api"]
+        entries = [e for e in entries if e.status not in ("hand-imported", "externally-reported")]
         table = show(entries, hidden=hidden)
     else:
         table = show(entries)
