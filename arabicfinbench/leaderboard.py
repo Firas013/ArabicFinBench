@@ -155,6 +155,40 @@ def build_leaderboard(
     return "\n".join(lines) + "\n"
 
 
+def _cell_metric_rows(rows: list[LeaderboardRow]) -> str:
+    """The cell-level P metrics and the E-axis null confusion, per system.
+
+    Their own block rather than folded into the table metrics: coverage answers
+    "did it attempt the cell", numeric exactness "how wrong are the digits",
+    and the null confusion "which direction does it err" — three questions a
+    single per-table score cannot separate. A row with no scored document
+    (externally reported) shows dashes, not zeros: it made no claim.
+    """
+    lines = ["\n### cell-level metrics (P) and null correctness (E)\n"]
+    header = "| system | coverage | numeric exact | digit CER | null acc | fabricated | dropped | cells judged |"
+    lines.append(header)
+    lines.append("|" + " --- |" * 8)
+    for row in rows:
+        scored = [s for s in row.scores.values() if s.coverage is not None]
+        if not scored:
+            lines.append(f"| {_row_label(row.provenance)} |" + " - |" * 7)
+            continue
+        cov = _mean([s.coverage.coverage for s in scored if s.coverage])
+        num = [s.numeric for s in scored if s.numeric]
+        nul = [s.nulls for s in scored if s.nulls]
+        exact = _mean([n.value_exact_match for n in num]) if num else None
+        cer = _mean([n.digit_cer for n in num]) if num else None
+        acc = _mean([n.accuracy for n in nul]) if nul else None
+        fab = _mean([n.fabrication_rate for n in nul]) if nul else None
+        drop = _mean([n.drop_rate for n in nul]) if nul else None
+        judged = sum(n.considered for n in nul) if nul else 0
+        lines.append(
+            f"| {_row_label(row.provenance)} | {_fmt(cov)} | {_fmt(exact)} | {_fmt(cer)} | "
+            f"{_fmt(acc)} | {_fmt(fab)} | {_fmt(drop)} | {judged} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def build_dev_report(rows: list[LeaderboardRow], *, metrics: tuple[str, ...]) -> str:
     """The permissive sibling: hand imports allowed, loudly labelled.
 
