@@ -94,6 +94,19 @@ def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
+def _pass_means(row: LeaderboardRow, metric: str) -> dict[str, float | None]:
+    """Per-pass mean for one metric, None where the metric is absent."""
+    out: dict[str, float | None] = {}
+    for pass_name in PASSES:
+        values = [s.passes[pass_name][metric] for s in row.scores.values() if metric in s.passes.get(pass_name, {})]
+        out[pass_name] = _mean(values) if values else None
+    return out
+
+
+def _fmt(value: float | None) -> str:
+    return "-" if value is None else f"{value:.4f}"
+
+
 def _row_label(provenance: Provenance) -> str:
     label = f"{provenance.adapter} ({provenance.model_version}, {provenance.mode})"
     if provenance.reference_implementation:
@@ -129,15 +142,16 @@ def build_leaderboard(
         lines.append(header)
         lines.append("|" + " --- |" * (len(PASSES) + 4))
         for row in rows:
-            per_pass = {p: _mean([s.passes[p].get(metric, 0.0) for s in row.scores.values()]) for p in PASSES}
-            delta = per_pass["struct"] - per_pass["raw"]
+            per_pass = _pass_means(row, metric)
+            raw_v, struct_v = per_pass["raw"], per_pass["struct"]
+            delta_s = "-" if raw_v is None or struct_v is None else f"{struct_v - raw_v:+.4f}"
             fidelities = [s.script_fidelity for s in row.scores.values() if s.script_fidelity is not None]
             fidelity = f"{_mean(fidelities):.4f}" if fidelities else "-"
             seeds = str(row.provenance.seed_count)
             if row.determinism is not None:
                 seeds += f" ({row.determinism.report_note})"
-            cells = " | ".join(f"{per_pass[p]:.4f}" for p in PASSES)
-            lines.append(f"| {_row_label(row.provenance)} | {cells} | {delta:+.4f} | {fidelity} | {seeds} |")
+            cells = " | ".join(_fmt(per_pass[p]) for p in PASSES)
+            lines.append(f"| {_row_label(row.provenance)} | {cells} | {delta_s} | {fidelity} | {seeds} |")
     return "\n".join(lines) + "\n"
 
 
@@ -154,13 +168,19 @@ def build_dev_report(rows: list[LeaderboardRow], *, metrics: tuple[str, ...]) ->
         lines.append("| system | " + " | ".join(PASSES) + " | script fidelity | status |")
         lines.append("|" + " --- |" * (len(PASSES) + 3))
         for row in rows:
-            per_pass = {p: _mean([s.passes[p].get(metric, 0.0) for s in row.scores.values()]) for p in PASSES}
+            per_pass = _pass_means(row, metric)
             fidelities = [s.script_fidelity for s in row.scores.values() if s.script_fidelity is not None]
             fidelity = f"{_mean(fidelities):.4f}" if fidelities else "-"
-            status = "hand-imported (dev only)" if row.provenance.hand_imported else "api"
+            if row.provenance.external_report:
+                who = row.provenance.reported_by or "unattributed"
+                status = f"EXTERNALLY REPORTED ({who}); not re-derived"
+            elif row.provenance.hand_imported:
+                status = "hand-imported (dev only)"
+            else:
+                status = "api"
             missing = row.provenance.missing_fields()
-            if missing and not row.provenance.hand_imported:
+            if missing and not (row.provenance.hand_imported or row.provenance.external_report):
                 status += f"; missing provenance: {', '.join(missing)}"
-            cells = " | ".join(f"{per_pass[p]:.4f}" for p in PASSES)
+            cells = " | ".join(_fmt(per_pass[p]) for p in PASSES)
             lines.append(f"| {_row_label(row.provenance)} | {cells} | {fidelity} | {status} |")
     return "\n".join(lines) + "\n"

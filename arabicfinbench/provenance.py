@@ -35,6 +35,19 @@ class HandImportedResultError(ValueError):
     """
 
 
+class ExternalReportError(ValueError):
+    """Scores were reported from elsewhere rather than re-derived here.
+
+    A hand-imported result still carries the system's actual output, so its
+    scores are computed by this repository's scorer at this canon version. An
+    externally reported number carries nothing: it cannot be re-derived, its
+    canon version cannot be checked, and page-image hashes cannot be computed,
+    so there is no way to know it describes the same document under the same
+    rules. It is recorded and labelled in the dev report; the leaderboard needs
+    the run.
+    """
+
+
 @dataclass(frozen=True)
 class Provenance:
     """Everything a leaderboard row must carry. Empty means missing."""
@@ -51,12 +64,17 @@ class Provenance:
     prompt_sha256: str = ""  # NO_PROMPT for prompt-free adapters — stated, not omitted
     hand_imported: bool = False
     reference_implementation: bool = False
+    external_report: bool = False
+    reported_by: str = ""  # who reported it and from where, when external_report
+
+    # Flags and attribution describe the row; they are not fields it must prove.
+    _NON_REQUIRED = ("hand_imported", "reference_implementation", "external_report", "reported_by")
 
     def missing_fields(self) -> list[str]:
         """The required fields this row cannot prove."""
         missing: list[str] = []
         for f in fields(self):
-            if f.name in ("hand_imported", "reference_implementation"):
+            if f.name in self._NON_REQUIRED:
                 continue
             value = getattr(self, f.name)
             if value is None or value == "" or value == ():
@@ -70,6 +88,14 @@ class Provenance:
         :raises HandImportedResultError: for hand-imported results.
         :raises MissingProvenanceError: listing every absent field by name.
         """
+        if self.external_report:
+            raise ExternalReportError(
+                f"row '{self.adapter or '<unnamed>'}' carries externally reported scores"
+                f"{f' (reported by {self.reported_by})' if self.reported_by else ''}; "
+                f"they cannot be re-derived at canon {self.canon_version or '<unknown>'}, "
+                f"so the row is recorded in the dev report only. Re-run the system here "
+                f"to produce a leaderboard row."
+            )
         if self.hand_imported:
             raise HandImportedResultError(
                 f"row '{self.adapter or '<unnamed>'}' is hand-imported; allowed in the dev "

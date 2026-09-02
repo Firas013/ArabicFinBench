@@ -57,6 +57,49 @@ def _harness_facts(output_dir: Path) -> dict:
 
 
 RUNS_DIR = Path("arabicfinbench/runs")
+EXTERNAL_DIR = RUNS_DIR / "external"
+
+
+def _external_rows(cases: list) -> list[LeaderboardRow]:
+    """Rows whose scores were reported from elsewhere, not re-derived here.
+
+    Recorded so a system run on another machine can sit beside the others for
+    discussion, and labelled so nobody mistakes it for a measured row. The
+    leaderboard rejects them; only the dev report shows them.
+    """
+    from arabicfinbench.scoring import reported_score
+
+    rows: list[LeaderboardRow] = []
+    for path in sorted(EXTERNAL_DIR.glob("*.json")) if EXTERNAL_DIR.is_dir() else []:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        document = payload.get("document") or (cases[0].test_id if cases else "unknown")
+        score = reported_score(
+            payload.get("reported_scores") or {},
+            script_fidelity=payload.get("reported_script_fidelity"),
+            source=payload.get("reported_by", path.name),
+            canon_version=payload.get("reported_canon_version", "unknown"),
+        )
+        rows.append(
+            LeaderboardRow(
+                provenance=Provenance(
+                    adapter=payload.get("display_name") or payload.get("adapter") or path.stem,
+                    model_version=str(payload.get("model_version", "")),
+                    mode=str(payload.get("mode", "")),
+                    canon_version=str(payload.get("reported_canon_version", "")),
+                    cost_per_page_usd=payload.get("cost_per_page_usd"),
+                    median_latency_ms=payload.get("median_latency_ms"),
+                    seed_count=payload.get("seed_count"),
+                    run_timestamp=str(payload.get("run_timestamp", "")),
+                    page_image_hashes=tuple(payload.get("page_image_hashes", ())),
+                    prompt_sha256=str(payload.get("prompt_sha256", "")),
+                    reference_implementation=bool(payload.get("reference_implementation", False)),
+                    external_report=True,
+                    reported_by=str(payload.get("reported_by", "")),
+                ),
+                scores={document: score},
+            )
+        )
+    return rows
 
 
 def _operator_declaration(pipeline: str, output_dir: Path) -> dict:
@@ -138,6 +181,7 @@ def main() -> int:
     pdf_hashes = {case.test_id: page_image_hashes(Path(case.file_path)) for case in cases}
 
     rows = [_build_row(p, args.output_root, cases, pdf_hashes) for p in args.pipeline]
+    rows += _external_rows(cases)
 
     admitted: list[LeaderboardRow] = []
     print("== admission ==")

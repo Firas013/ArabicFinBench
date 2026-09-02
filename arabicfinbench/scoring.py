@@ -85,6 +85,42 @@ class DocumentScore:
         return {m: struct[m] - raw[m] for m in raw if m in struct}
 
 
+def _zero_passes() -> dict[str, dict[str, float]]:
+    return {p: dict.fromkeys(HEADLINE_METRICS, 0.0) for p in PASSES}
+
+
+_EMPTY_TRACE = SideTrace(text_rules=(), structure_rules=(), tables=())
+
+
+def reported_score(
+    passes: dict[str, dict[str, float]],
+    *,
+    script_fidelity: float | None = None,
+    source: str,
+    canon_version: str = "unknown",
+) -> DocumentScore:
+    """Wrap numbers reported from elsewhere, marked as not re-derived.
+
+    Use only for a system that was run on another machine and whose output is
+    unavailable. The empty traces are not an oversight: nothing was
+    canonicalised here because nothing was scored here, and a reader comparing
+    a row with no fired rules against rows with seven of them should be able to
+    see that immediately.
+
+    The canon version defaults to ``"unknown"`` rather than this repository's,
+    because claiming the local version for a number computed elsewhere is the
+    precise error the stamp exists to prevent.
+    """
+    return DocumentScore(
+        passes={p: dict(passes.get(p, {})) for p in PASSES},
+        gt_trace=_EMPTY_TRACE,
+        pred_trace=_EMPTY_TRACE,
+        script_fidelity=script_fidelity,
+        canon_version=canon_version,
+        notes=(f"externally reported: {source}; not re-derived by this repository",),
+    )
+
+
 def _run_of_script(run: str) -> str:
     """Classify one digit run: 'arabic-indic', 'western', or 'mixed'."""
     kinds = {("arabic-indic" if ch in _ARABIC_INDIC else "western") for ch in run}
@@ -110,13 +146,6 @@ def script_fidelity(gt_markup: str, raw_pred_markup: str) -> float | None:
     gt_kinds = [_run_of_script(r) for r in gt_runs]
     page_script = max(set(gt_kinds), key=gt_kinds.count)
     return sum(1 for r in pred_runs if _run_of_script(r) == page_script) / len(pred_runs)
-
-
-def _zero_passes() -> dict[str, dict[str, float]]:
-    return {p: dict.fromkeys(HEADLINE_METRICS, 0.0) for p in PASSES}
-
-
-_EMPTY_TRACE = SideTrace(text_rules=(), structure_rules=(), tables=())
 
 
 def score_document(

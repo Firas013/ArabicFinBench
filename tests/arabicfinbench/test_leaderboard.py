@@ -204,3 +204,83 @@ class TestReferenceLabelling:
     def test_ordinary_rows_carry_no_label(self) -> None:
         table = build_leaderboard([_row()], metrics=("table_record_match",))
         assert REFERENCE_LABEL not in table
+
+
+class TestExternallyReportedRows:
+    """Numbers reported from another machine are recorded, never admitted.
+
+    The unfairness: a hand-imported result still carries the system's output,
+    so its score is computed here at a known canon version. A reported number
+    carries nothing — it cannot be re-derived, its canon version cannot be
+    checked, and page-image hashes cannot be computed, so there is no way to
+    know it describes the same document under the same rules.
+    """
+
+    def _external(self, **overrides) -> LeaderboardRow:
+        from arabicfinbench.scoring import reported_score
+
+        provenance = _full_provenance(
+            external_report=True,
+            reported_by="another machine",
+            reference_implementation=True,
+            **overrides,
+        )
+        score = reported_score(
+            {"raw": {"table_record_match": 0.864}, "struct": {"table_record_match": 0.844}},
+            script_fidelity=1.0,
+            source="another machine",
+        )
+        return LeaderboardRow(provenance=provenance, scores={"test_1/Test_1": score})
+
+    def test_an_externally_reported_row_is_rejected(self) -> None:
+        from arabicfinbench.provenance import ExternalReportError
+
+        with pytest.raises(ExternalReportError, match="cannot be re-derived"):
+            validate_row(self._external())
+
+    def test_rejection_names_who_reported_it(self) -> None:
+        from arabicfinbench.provenance import ExternalReportError
+
+        with pytest.raises(ExternalReportError, match="another machine"):
+            validate_row(self._external())
+
+    def test_full_provenance_does_not_rescue_it(self) -> None:
+        # Even a row with every field filled in is still not a measurement.
+        from arabicfinbench.provenance import ExternalReportError
+
+        with pytest.raises(ExternalReportError):
+            validate_row(self._external())
+
+    def test_the_dev_report_shows_and_labels_it(self) -> None:
+        report = build_dev_report([self._external()], metrics=("table_record_match",))
+        assert "EXTERNALLY REPORTED" in report
+        assert "another machine" in report
+        assert "0.8640" in report
+
+    def test_the_reference_label_still_applies(self) -> None:
+        report = build_dev_report([self._external()], metrics=("table_record_match",))
+        assert REFERENCE_LABEL in report
+
+    def test_reported_scores_carry_no_canon_trace(self) -> None:
+        # Empty traces are the visible signal that nothing was scored here.
+        row = self._external()
+        score = row.scores["test_1/Test_1"]
+        assert score.gt_trace.text_rules == ()
+        assert score.pred_trace.text_rules == ()
+        assert score.canon_version == "unknown"
+        assert any("not re-derived" in note for note in score.notes)
+
+    def test_an_unreported_pass_renders_as_a_dash_not_a_zero(self) -> None:
+        # GVP reported raw and struct but no text pass. Printing 0.0000 there
+        # would assert a score of zero where no claim was made.
+        report = build_dev_report([self._external()], metrics=("table_record_match",))
+        row_line = next(line for line in report.splitlines() if "REPORTED" in line)
+        cells = [c.strip() for c in row_line.split("|")]
+        assert "0.8640" in cells and "0.8440" in cells
+        assert "-" in cells
+        assert "0.0000" not in cells
+
+    def test_a_metric_absent_everywhere_gives_a_dash_delta(self) -> None:
+        table = build_dev_report([self._external()], metrics=("grits_con",))
+        row_line = next(line for line in table.splitlines() if "REPORTED" in line)
+        assert "0.0000" not in row_line
