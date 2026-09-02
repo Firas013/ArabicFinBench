@@ -85,6 +85,12 @@ def show(entries: list[StoredScore]) -> str:
     entries = sorted(entries, key=lambda e: -(e.passes.get("struct", {}).get("table_record_match") or 0))
     canon = {e.canon_version for e in entries}
     out = [f"\n# ArabicFinBench — {DOCUMENT}  (canon {', '.join(sorted(canon))})\n"]
+    out.append(
+        "**What each column means: [docs/metrics.md](metrics.md).** In short — "
+        "`struct` is the score, `raw` is what an unnormalised leaderboard would "
+        "show, and the gap between them is convention rather than reading "
+        "quality.\n"
+    )
 
     out.append("## P — table metrics, raw | text | struct\n")
     out.append("| system | TRM raw | TRM text | TRM struct | GriTS struct | raw→canon Δ | tables | status |")

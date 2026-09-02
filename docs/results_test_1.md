@@ -1,6 +1,8 @@
 
 # ArabicFinBench — test_1/Test_1  (canon 0.4.0)
 
+**What each column means: [docs/metrics.md](metrics.md).** In short — `struct` is the score, `raw` is what an unnormalised leaderboard would show, and the gap between them is convention rather than reading quality.
+
 ## P — table metrics, raw | text | struct
 
 | system | TRM raw | TRM text | TRM struct | GriTS struct | raw→canon Δ | tables | status |
