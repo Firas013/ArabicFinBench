@@ -162,12 +162,40 @@ magnitude faster while giving up a few points of accuracy.
 
 ---
 
-## What is not here
+## F — arithmetic consistency
 
-**F (arithmetic)** — whether the extracted figures actually add up — is
-implemented and tested but not reported for this document, because no
-arithmetic rules have been authored for it yet. That is ground-truth work,
-not a missing capability.
+**F** asks whether the figures a system extracted add up *on their own terms*.
+A financial statement is self-checking: totals are sums of their components. A
+system can read every glyph plausibly and still emit a statement that does not
+reconcile, and no per-cell metric can see that — on `test_4`,
+`gemini-3.5-flash-lite` transcribes the total correctly and one component
+wrongly, which only the arithmetic catches.
+
+Identities are declared once, in
+[`arabicfinbench/gt/relations.py`](../arabicfinbench/gt/relations.py), and used
+twice: against the ground truth as the admission gate, and against each system's
+figures as the F score. Authoring two separate sets would let the answer key and
+the arithmetic test drift apart. 81 are declared across the corpus; 80 reconcile
+against the ground truth, and the one that does not is an open flag in
+`gt/corrections.log.jsonl` rather than a deleted relation.
+
+Reconciliation is exact `Fraction` arithmetic — no float tolerance. Where the
+page itself is imprecise (a printed rate rounded to four decimals), that is
+declared as a `tolerance_band` on the rule that needs it rather than smuggled in
+as a global epsilon.
+
+**A relation whose figures a system never produced counts against it.** Dropping
+those from the denominator would give the highest F to a system that outputs
+nothing. `F (evaluable)` is reported beside `F` to separate computing badly from
+extracting sparsely.
+
+**Known limitation.** F reads a system's figures at canonical grid positions,
+and row alignment inside a paired table is still positional. A system whose
+table has a different row count can be read one row off, which shows up as an
+unevaluable relation rather than a wrong sum. Prefer `F (evaluable)` and the
+counts over the bare rate until that is fixed.
+
+## What is not here
 
 **A combined score** does not exist and cannot be produced: the generator
 raises rather than emitting one, and CI rejects any table with an `overall`

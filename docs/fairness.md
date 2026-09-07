@@ -3,10 +3,32 @@
 The principle: **every point a model loses must be attributable to the model —
 not to a convention, the harness, or the annotator.** Each guard below is
 enforced code with tests, not policy text, and each one exists because the
-unfairness it prevents was actually observed on the first benchmark document
-(Test_1, a Saudi financial statement, private development fixture). File
-references are to the enforcing code; every guard has tests in
-`tests/arabicfinbench/` that fail without it.
+unfairness it prevents was actually observed. File references are to the
+enforcing code; every guard has tests in `tests/arabicfinbench/` that fail
+without it.
+
+Guards 1–10 were derived from the first document (Test_1, a Saudi financial
+statement). Expanding to five documents found three more failures of the same
+principle, each now fixed and regression-tested:
+
+- **Table pairing.** The cell metrics compared ground-truth table *i* against
+  prediction table *i* by position, while GriTS matched them properly with a
+  Hungarian assignment. A prediction that split one table offset every table
+  after it. On the 11-page scan this reported `numeric_exact = 0.0000` for every
+  system while 83% of the ground truth's figures were present verbatim in their
+  output. Fixed by reusing GriTS's own pairing.
+- **Ragged tables.** Column ordering declined on uneven row widths, so it fired
+  on the rectangular ground truth and skipped a prediction with one short row,
+  leaving the sides in different column frames. Canon was symmetric by
+  construction and asymmetric in effect. Short rows are now padded.
+- **Empty predictions ranked as measurements.** A system returning nothing was
+  stored as a normal row scoring 0.0000, which reads as "transcribes nothing
+  correctly" rather than "returned nothing". Now forced to `failed`.
+
+One known breach remains open: row alignment inside a paired table is still
+positional, which can depress E and F for a system whose table has a different
+row count. It is stated in `docs/metrics.md` rather than left for a reader to
+discover.
 
 ## 1. Symmetric canonicalisation — `arabicfinbench/canon/`, `arabicfinbench/scoring.py`
 
@@ -39,12 +61,18 @@ rank-flip story in two numbers.
 Every table shows `raw | text | struct` plus the per-model raw→struct delta.
 The delta is a diagnostic: near zero means the model shares the annotator's
 conventions; large means the raw number was substantially about conventions.
-Evidence: Test_1's ranking **flips** between passes — raw says Datalab 0.7445
-vs LlamaParse 0.3195 on `table_record_match`; canon says LlamaParse 0.9129 vs
-Datalab 0.7766. Deltas: LlamaParse +0.59, Datalab +0.03. A leaderboard showing
-either pass alone would state a conclusion the other pass contradicts. Both
-orderings are regression tests: a synthetic fixture reproduces the mechanism in
-CI, and a local test re-derives them from the stored Test_1 results.
+Evidence: Test_1's ranking **flips** between passes. On `table_record_match`,
+raw says Mistral OCR 0.5732 vs LlamaParse 0.1511; canon says LlamaParse 0.9799
+vs Mistral OCR 0.4086. LlamaParse gains +0.83 from canon, Mistral OCR loses
+0.16. A leaderboard showing either pass alone would state a conclusion the other
+pass contradicts. Both orderings are regression tests: a synthetic fixture
+reproduces the mechanism in CI, and `TestRankFlipOnStoredResults` re-derives
+them from the stored Test_1 results.
+
+The flip is not confined to one document. Across the five-document corpus the
+raw and struct passes name a different leader on **four of five** — they agree
+only on `test_2`. Choosing a pass therefore chooses a winner most of the time,
+which is why all three are always printed side by side.
 
 ## 4. One execution path — `arabicfinbench/provenance.py`, `scripts/afb_leaderboard.py`
 

@@ -22,11 +22,21 @@ source_datasets:
 
 # Dataset Card for ArabicFinBench
 
-> **Template.** Bracketed `<...>` fields are unfilled. No corpus has been
-> released yet; nothing in this card should be read as a published result.
+> **Template — no dataset has been released.** Bracketed `<...>` fields are
+> unfilled and this card describes a dataset that does not yet exist at any
+> public id.
+>
+> A five-document corpus exists locally and is scored (see
+> [results_all.md](results_all.md)), but the filings are not redistributable
+> under this repository's licence, so they are not published here or anywhere.
+> Only the ground truth and generated sidecars are tracked, under `dataset/`.
+> Releasing the corpus requires sourcing filings with confirmed redistribution
+> rights — Tadawul-published statements, per
+> [gt/CONVENTIONS.md](../arabicfinbench/gt/CONVENTIONS.md) §6 — and is the main
+> outstanding work.
 
 - **Proposed dataset id:** `<ORG>/ArabicFinBench`
-- **Repository:** https://github.com/<ORG>/arabicfinbench
+- **Repository:** https://github.com/Firas013/ArabicFinBench
 - **Upstream harness:** [ExtractBench](https://github.com/run-llama/ExtractBench) (Apache-2.0)
 - **Point of contact:** `<CONTACT>`
 

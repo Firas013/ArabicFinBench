@@ -3,11 +3,29 @@
 An evaluation benchmark for Arabic financial-document understanding, built as a
 fork of [ExtractBench](https://github.com/run-llama/ExtractBench).
 
-> **Status: pre-release scaffolding. Nothing is scored yet.**
-> The harness runs and the environment is reproducible, but no ArabicFinBench
-> corpus, ground truth, or results exist in this repository. Any numbers you
-> find under `docs/` are inherited ExtractBench results and are **not**
-> ArabicFinBench results.
+> **Status: methodology preview on a five-document corpus. Not a leaderboard.**
+>
+> Ten systems are scored on five Arabic financial filings, on the P (parse) and
+> F (arithmetic) axes. The numbers under `docs/` are real ArabicFinBench
+> measurements — except `docs/upstream_leaderboard.csv`, which is ExtractBench's
+> own table kept for provenance.
+>
+> **What you should not do with them.** Five documents cannot separate systems:
+> the top two differ by 0.011 on the P mean, which is inside the noise for a
+> corpus this size, and nothing here is significance-tested. Treat this as
+> evidence that the *method* works, not as a ranking of the systems.
+>
+> **The corpus is not yet redistributable.** The filings are not committed (see
+> [gt/CONVENTIONS.md](arabicfinbench/gt/CONVENTIONS.md) §6); the ground truth
+> and sidecars are, under `dataset/`. So the scores can be re-derived from a
+> stored prediction, but the documents cannot yet be re-run from scratch by
+> someone else. Fixing that is the main work remaining.
+>
+> **The E axis is young.** Three defects in it were found and fixed recently
+> (table pairing, ragged-column asymmetry, empty predictions ranked as
+> measurements); one known issue remains — row alignment inside a paired table
+> is positional, which can depress both E and F. Read the P columns with
+> confidence, E and F with the caveat.
 
 ## Provenance
 

@@ -5,9 +5,12 @@ abstract: >-
   ArabicFinBench evaluates Arabic financial-document understanding along three
   separately reported axes - Parse, Extract, and Finance (P/E/F) - which are
   never combined into a single score. It is a fork of the ExtractBench harness.
+  This release is a methodology preview: ten systems scored on a five-document
+  corpus that is not yet redistributable, with the Parse and Finance axes
+  reported. It is not a leaderboard and its rankings are not significance-tested.
 type: software
-version: 0.1.0
-date-released: "2026-08-31"
+version: 0.2.0
+date-released: "2026-09-07"
 license: Apache-2.0
 repository-code: "https://github.com/Firas013/ArabicFinBench"
 url: "https://github.com/Firas013/ArabicFinBench"
@@ -18,6 +21,9 @@ keywords:
   - document-understanding
   - information-extraction
 authors:
+  # UNFILLED. Citation metadata must not be guessed on an author's behalf, so
+  # these stay bracketed until the author fills them in. A release should not be
+  # tagged while this block still reads <FAMILY-NAME>.
   - family-names: "<FAMILY-NAME>"
     given-names: "<GIVEN-NAME>"
     affiliation: "<AFFILIATION>"
