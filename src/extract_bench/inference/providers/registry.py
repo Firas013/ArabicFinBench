@@ -60,12 +60,9 @@ def create_provider(pipeline: PipelineSpec) -> Provider:
     if provider_cls is None:
         message = f"No provider registered for '{provider_name}'."
         if _IMPORT_FAILURES:
-            details = "; ".join(
-                f"{module}: {exc!r}" for module, exc in sorted(_IMPORT_FAILURES.items())
-            )
+            details = "; ".join(f"{module}: {exc!r}" for module, exc in sorted(_IMPORT_FAILURES.items()))
             message += (
-                f" {len(_IMPORT_FAILURES)} provider module(s) failed to import"
-                f" and one of them may define it: {details}"
+                f" {len(_IMPORT_FAILURES)} provider module(s) failed to import and one of them may define it: {details}"
             )
         raise ProviderConfigError(message)
 

@@ -6,9 +6,9 @@ this package are logged loudly instead of being skipped.
 """
 
 import importlib
+import logging
 
 from extract_bench.inference.providers import registry
-import logging
 
 logger = logging.getLogger(__name__)
 

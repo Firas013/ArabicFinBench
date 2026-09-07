@@ -59,9 +59,7 @@ def prediction_markup(pred_path: Path) -> str:
                     rows.setdefault(u.get("row", 0), {})[u.get("col", 0)] = u["t"]
                 table = "<table>"
                 for index in sorted(rows):
-                    cells = "".join(
-                        f"<td>{_esc(rows[index].get(c, ''))}</td>" for c in range(width + 1)
-                    )
+                    cells = "".join(f"<td>{_esc(rows[index].get(c, ''))}</td>" for c in range(width + 1))
                     table += f"<tr>{cells}</tr>"
                 blocks.append(table + "</table>")
             else:

@@ -8,6 +8,11 @@ from typing import Any
 import pytest
 
 pytest.importorskip("pypdf", reason="dev and runners extras required; run: uv sync --extra dev --extra runners")
+# The guard above named pypdf, which the dev extra already provides, so these
+# tests errored instead of skipping on a runner-free install -- the exact
+# behaviour CI's "Pytest without runners" step exists to verify. Guard the
+# dependency the tests actually need.
+pytest.importorskip("google.genai", reason="dev and runners extras required; run: uv sync --extra dev --extra runners")
 
 from extract_bench.inference.providers.base import ProviderConfigError
 from extract_bench.inference.providers.extract import gemini_direct

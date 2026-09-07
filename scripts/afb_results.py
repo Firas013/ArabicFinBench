@@ -162,9 +162,7 @@ def _display_name(system: str) -> str:
     return system
 
 
-def show(
-    entries: list[StoredScore], *, document: str, hidden: list[StoredScore] | None = None
-) -> str:
+def show(entries: list[StoredScore], *, document: str, hidden: list[StoredScore] | None = None) -> str:
     ranked = [e for e in entries if e.status != "failed"]
     ranked = sorted(ranked, key=lambda e: -(e.passes.get("struct", {}).get("table_record_match") or 0))
     # With no entries yet there is no stamp to report, so name the canon the
@@ -227,9 +225,7 @@ def show(
         out.append("|" + " --- |" * 6)
         for e in sorted(ranked, key=lambda x: -(x.arithmetic_consistency or 0)):
             evaluable = (
-                "-"
-                if not e.arithmetic_evaluable
-                else f"{e.arithmetic_reconciling / e.arithmetic_evaluable:.4f}"
+                "-" if not e.arithmetic_evaluable else f"{e.arithmetic_reconciling / e.arithmetic_evaluable:.4f}"
             )
             out.append(
                 f"| {_display_name(e.system)} | **{_fmt(e.arithmetic_consistency)}** | {evaluable} | "

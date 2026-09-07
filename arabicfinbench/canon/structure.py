@@ -295,9 +295,7 @@ def normalize_table_columns(table_html: str, report: TableReport) -> tuple[str, 
     if len(widths) > 1:
         width = max(widths)
         short = sum(1 for cells in parsed if len(cells) < width)
-        parsed = [
-            cells + [_Cell(text="", colspan=1)] * (width - len(cells)) for cells in parsed
-        ]
+        parsed = [cells + [_Cell(text="", colspan=1)] * (width - len(cells)) for cells in parsed]
         report = replace(report, padded_rows=short)
     if any(c.colspan > 1 for cells in parsed for c in cells):
         return table_html, replace(report, column_order_skipped="colspan")
@@ -319,9 +317,7 @@ def normalize_table_columns(table_html: str, report: TableReport) -> tuple[str, 
         cell_matches = list(_CELL_RE.finditer(row_html))
         open_tag = _ROW_OPEN_RE.match(row_html)
         assert open_tag is not None  # _ROW_RE guarantees the row opens with <tr
-        cells_out = [
-            cell_matches[i].group(0) if i < len(cell_matches) else "<td></td>" for i in order
-        ]
+        cells_out = [cell_matches[i].group(0) if i < len(cell_matches) else "<td></td>" for i in order]
         rebuilt = open_tag.group(0) + "".join(cells_out) + "</tr>"
         pieces.append(table_html[cursor : m.start()])
         pieces.append(rebuilt)

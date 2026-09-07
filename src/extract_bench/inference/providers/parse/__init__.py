@@ -1,9 +1,9 @@
 """Parse providers — imported lazily to avoid requiring all SDKs."""
 
 import importlib
+import logging
 
 from extract_bench.inference.providers import registry
-import logging
 
 logger = logging.getLogger(__name__)
 

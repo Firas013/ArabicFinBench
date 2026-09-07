@@ -16,4 +16,3 @@ CANON_VERSION = "0.7.0"
 #         compare the tables GriTS paired, not tables zipped by position. No
 #         canon transform changed; the stamp still had to move, because the
 #         numbers it guards did.
-

@@ -7,6 +7,9 @@ from typing import Any
 import pytest
 
 pytest.importorskip("pypdf", reason="dev and runners extras required; run: uv sync --extra dev --extra runners")
+# pypdf ships with the dev extra, so that guard never fired and these tests
+# errored rather than skipping on a runner-free install. Guard the SDK they use.
+pytest.importorskip("anthropic", reason="dev and runners extras required; run: uv sync --extra dev --extra runners")
 
 from extract_bench.inference.providers.base import (
     ProviderConfigError,

@@ -21,9 +21,7 @@ from arabicfinbench.scoring import _align_to_pairing, score_document
 
 
 def _table(rows: list[list[str]]) -> str:
-    body = "".join(
-        "<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows
-    )
+    body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
     return f"<table>{body}</table>"
 
 

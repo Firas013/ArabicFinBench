@@ -42,31 +42,23 @@ class TestUnevaluableCannotPass:
 
     def test_a_missing_addend_is_not_treated_as_zero(self) -> None:
         # 100 = 100 + <missing>. Treating the absent cell as zero would pass.
-        report = score_relations(
-            RELATIONS, {"t0.r2.c0": "100", "t0.r0.c0": "100", "t0.r1.c0": None}
-        )
+        report = score_relations(RELATIONS, {"t0.r2.c0": "100", "t0.r0.c0": "100", "t0.r1.c0": None})
         assert report.reconciling == 0
         assert report.outcomes[0].missing == ("t0.r1.c0",)
 
     def test_a_printed_empty_cell_is_a_nil_not_a_gap(self) -> None:
         # An empty cell is a legitimate value in these statements; only a cell
         # the system never produced counts as missing.
-        report = score_relations(
-            RELATIONS, {"t0.r2.c0": "100", "t0.r0.c0": "100", "t0.r1.c0": ""}
-        )
+        report = score_relations(RELATIONS, {"t0.r2.c0": "100", "t0.r0.c0": "100", "t0.r1.c0": ""})
         assert report.reconciling == 1
         assert report.consistency == 1.0
 
     def test_correct_arithmetic_reconciles(self) -> None:
-        report = score_relations(
-            RELATIONS, {"t0.r2.c0": "٣٠٠", "t0.r0.c0": "١٠٠", "t0.r1.c0": "٢٠٠"}
-        )
+        report = score_relations(RELATIONS, {"t0.r2.c0": "٣٠٠", "t0.r0.c0": "١٠٠", "t0.r1.c0": "٢٠٠"})
         assert report.reconciling == 1
 
     def test_one_wrong_digit_fails(self) -> None:
-        report = score_relations(
-            RELATIONS, {"t0.r2.c0": "301", "t0.r0.c0": "100", "t0.r1.c0": "200"}
-        )
+        report = score_relations(RELATIONS, {"t0.r2.c0": "301", "t0.r0.c0": "100", "t0.r1.c0": "200"})
         assert report.reconciling == 0
         assert report.evaluable == 1  # it answered; it was wrong
         assert report.outcomes[0].residual == 1
@@ -74,6 +66,7 @@ class TestUnevaluableCannotPass:
 
 def _relation_objects(rules: list[dict]) -> list[Relation]:
     """Convert authored references into ground-truth Relation objects."""
+
     def ref(text: str) -> tuple[int, int, int]:
         t, r, c = text.split(".")
         return int(t[1:]), int(r[1:]), int(c[1:])

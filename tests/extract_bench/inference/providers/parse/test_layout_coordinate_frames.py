@@ -15,6 +15,12 @@ from unittest import mock
 
 import pytest
 
+# Several cases instantiate the Anthropic parse provider, which raises
+# ProviderConfigError without the SDK. Without this the file errored rather than
+# skipping on a runner-free install -- the behaviour CI's "Pytest without
+# runners" step exists to verify.
+pytest.importorskip("anthropic", reason="dev and runners extras required; run: uv sync --extra dev --extra runners")
+
 pytest.importorskip("PIL", reason="dev and runners extras required; run: uv sync --extra dev --extra runners")
 
 from extract_bench.inference.providers.parse._layout_utils import (

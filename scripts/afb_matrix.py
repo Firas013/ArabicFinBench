@@ -81,7 +81,7 @@ def _value(row: dict | None, metric: str, pass_: str | None) -> float | None:
 def table(rows, systems, metric, pass_, title, note) -> list[str]:
     docs = [d for d, _ in CORPUS if d not in UNSCOREABLE]
     out = [f"\n### {title}\n", note, ""]
-    out.append("| system | " + " | ".join(l for d, l in CORPUS) + " | mean |")
+    out.append("| system | " + " | ".join(label for _, label in CORPUS) + " | mean |")
     out.append("|" + " --- |" * (len(CORPUS) + 2))
     ranked = sorted(
         systems,
@@ -129,23 +129,35 @@ def main() -> int:
     out.append("per-document tables. **`–`** = never run. Neither is a score of zero.\n")
 
     out += table(
-        rows, systems, "table_record_match", "struct",
+        rows,
+        systems,
+        "table_record_match",
+        "struct",
         "P — table record match, `struct` pass",
         "The score. Canon applied symmetrically to both sides.",
     )
     out += table(
-        rows, systems, "table_record_match", "raw",
+        rows,
+        systems,
+        "table_record_match",
+        "raw",
         "P — table record match, `raw` pass",
         "What an unnormalised leaderboard would show. The gap to `struct` is "
         "convention — column direction and section rows — not reading quality.",
     )
     out += table(
-        rows, systems, "grits_con", "struct",
+        rows,
+        systems,
+        "grits_con",
+        "struct",
         "P — GriTS content, `struct` pass",
         "Content agreement over the paired table grids.",
     )
     out += table(
-        rows, systems, "arithmetic_consistency", None,
+        rows,
+        systems,
+        "arithmetic_consistency",
+        None,
         "F — arithmetic consistency",
         "Share of the statement's own declared identities that the system's "
         "extracted figures satisfy, under exact `Fraction` arithmetic. A relation "
@@ -155,7 +167,10 @@ def main() -> int:
         "partially correct.",
     )
     out += table(
-        rows, systems, "script_fidelity", None,
+        rows,
+        systems,
+        "script_fidelity",
+        None,
         "Diagnostic — script fidelity",
         "Fraction of the raw prediction's digit runs written in the script the "
         "page actually prints. Measured on raw output and never folded into a P "

@@ -36,13 +36,13 @@ from arabicfinbench.canon import (
     canonicalize_structure,
 )
 from arabicfinbench.canon.version import CANON_VERSION
+from arabicfinbench.dimensions.arithmetic.score import ArithmeticReport, score_relations
 from arabicfinbench.dimensions.cells import (
     CoverageReport,
     NumericReport,
     compute_coverage,
     compute_numeric_exactness,
 )
-from arabicfinbench.dimensions.arithmetic.score import ArithmeticReport, score_relations
 from arabicfinbench.dimensions.nulls import NullReport, compute_null_correctness
 from arabicfinbench.guards import assert_clean_encoding
 
@@ -294,9 +294,7 @@ def score_document(
     # pre-step, because that is the text GriTS indexed when it built the
     # pairing; parsing the unmerged markup would number the tables differently
     # and the pairing would point at the wrong ones.
-    gt_grids, pred_grids = _grids(
-        struct_expected, merge_preceding_titles_into_tables(struct_expected, struct_actual)
-    )
+    gt_grids, pred_grids = _grids(struct_expected, merge_preceding_titles_into_tables(struct_expected, struct_actual))
     pred_grids = _align_to_pairing(gt_grids, pred_grids, table_pairing(struct_values))
 
     # F. Relations are authored in ground-truth coordinates, so they are mapped
@@ -316,9 +314,7 @@ def score_document(
                 t, r, c = _parse_ref(str(ref))
                 located = maps[t].locate(r, c) if t < len(maps) else None
                 values[str(ref)] = (
-                    value_at(pred_grids[t], *located)
-                    if located is not None and t < len(pred_grids)
-                    else None
+                    value_at(pred_grids[t], *located) if located is not None and t < len(pred_grids) else None
                 )
         arithmetic = score_relations(relations, values)
 

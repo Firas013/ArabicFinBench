@@ -143,9 +143,5 @@ def score_relations(
 
         if missing:
             computed = None
-        outcomes.append(
-            RelationOutcome(
-                name=name, stated=stated, computed=computed, missing=tuple(missing)
-            )
-        )
+        outcomes.append(RelationOutcome(name=name, stated=stated, computed=computed, missing=tuple(missing)))
     return ArithmeticReport(outcomes=tuple(outcomes))

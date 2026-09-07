@@ -133,9 +133,7 @@ def main() -> int:
         print(f"\ndry run: {len(entries)} correction(s) not written")
         return 0
 
-    gt_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
-    )
+    gt_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     with LOG.open("a", encoding="utf-8") as f:
         for entry in entries:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")

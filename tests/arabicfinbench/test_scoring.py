@@ -171,36 +171,48 @@ class TestRankFlipRegression:
 
 
 _REPO = Path(__file__).resolve().parents[2]
-_REAL_RUNS = [
-    _REPO / "output" / "llamaparse_agentic" / "test_1" / "Test_1.result.json",
-    _REPO / "output" / "datalab_web" / "test_1" / "Test_1.result.json",
-    _REPO / "test_1" / "Test_1.md",
-]
+_GT = _REPO / "dataset" / "test_1" / "Test_1.md"
+# The second system was datalab_web, whose output was a console export with no
+# stored result file, so this class skipped permanently. mistral_ocr_4 stands in
+# the same relation to llamaparse_agentic -- higher raw, lower struct, and the
+# opposite script behaviour -- so the two claims below are unchanged; only the
+# system that demonstrates them is one whose output is actually on disk.
+_LOW_RAW_HIGH_STRUCT = _REPO / "output" / "llamaparse_agentic" / "test_1" / "Test_1.result.json"
+_HIGH_RAW_LOW_STRUCT = _REPO / "output" / "mistral_ocr_4" / "test_1" / "Test_1.result.json"
+_REAL_RUNS = [_LOW_RAW_HIGH_STRUCT, _HIGH_RAW_LOW_STRUCT, _GT]
 
 
 @pytest.mark.skipif(
     not all(p.exists() for p in _REAL_RUNS),
-    reason="local Test_1 artefacts not present (private fixture; gitignored)",
+    reason="local Test_1 inference output not present (filings are not committed)",
 )
 class TestRankFlipOnStoredResults:
-    """The observed numbers, re-derived from the stored local results."""
+    """The observed numbers, re-derived from the stored local results.
+
+    The finding this pins: on Test_1 the ranking *reverses* between the raw and
+    struct passes, so quoting either alone picks a different winner. It is the
+    evidence behind reporting all three passes side by side.
+    """
 
     def _score(self, result_path: Path) -> DocumentScore:
-        gt = (_REPO / "test_1" / "Test_1.md").read_text(encoding="utf-8")
+        gt = _GT.read_text(encoding="utf-8")
         pred = json.loads(result_path.read_text(encoding="utf-8"))["output"]["markdown"]
         return score_document(gt, pred, source=result_path.parent.name)
 
     def test_both_orderings_reproduce(self) -> None:
-        llama = self._score(_REAL_RUNS[0])
-        datalab = self._score(_REAL_RUNS[1])
+        llama = self._score(_LOW_RAW_HIGH_STRUCT)
+        other = self._score(_HIGH_RAW_LOW_STRUCT)
         metric = "table_record_match"
-        assert datalab.passes["raw"][metric] > llama.passes["raw"][metric]
-        assert llama.passes["struct"][metric] > datalab.passes["struct"][metric]
+        # Raw says one system is better; canon says the other. Both are real.
+        assert other.passes["raw"][metric] > llama.passes["raw"][metric]
+        assert llama.passes["struct"][metric] > other.passes["struct"][metric]
 
     def test_the_script_fidelity_gap_reproduces(self) -> None:
-        llama = self._score(_REAL_RUNS[0])
-        datalab = self._score(_REAL_RUNS[1])
-        assert datalab.script_fidelity is not None and datalab.script_fidelity > 0.9
+        llama = self._score(_LOW_RAW_HIGH_STRUCT)
+        other = self._score(_HIGH_RAW_LOW_STRUCT)
+        # Canon deliberately folds digit script so values score fairly; the
+        # credit for preserving it lives here instead, and separates these two.
+        assert other.script_fidelity is not None and other.script_fidelity > 0.9
         assert llama.script_fidelity is not None and llama.script_fidelity < 0.5
 
 

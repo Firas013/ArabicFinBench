@@ -59,10 +59,7 @@ def map_table(table_html: str) -> TableMap:
     n_cols = _column_count(parsed)
 
     blanks = [is_blank_row(cells) for cells in parsed]
-    sections = [
-        not blank and is_section_row(cells, n_cols)
-        for cells, blank in zip(parsed, blanks, strict=True)
-    ]
+    sections = [not blank and is_section_row(cells, n_cols) for cells, blank in zip(parsed, blanks, strict=True)]
     # strip_table_sections leaves a table alone when the rule would empty it.
     if all(s or b for s, b in zip(sections, blanks, strict=True)):
         sections = [False] * len(parsed)
@@ -70,9 +67,7 @@ def map_table(table_html: str) -> TableMap:
 
     rows: dict[int, int] = {}
     kept: list[list[_Cell]] = []
-    for raw_index, (cells, is_section, blank) in enumerate(
-        zip(parsed, sections, blanks, strict=True)
-    ):
+    for raw_index, (cells, is_section, blank) in enumerate(zip(parsed, sections, blanks, strict=True)):
         if is_section or blank:
             continue
         rows[raw_index] = len(kept)
