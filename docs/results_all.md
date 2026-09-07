@@ -13,13 +13,13 @@ The score. Canon applied symmetrically to both sides.
 | system | test_1 | test_2 | test_3 | test_4 | test_5 | test_6 | mean |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | gemini-3.5-flash-lite | 0.7648 | 0.6219 | n/a | 0.7623 | 0.6767 | 0.4802 | 0.6612 |
-| qwen3.8-27b | 0.8711 | 0.4893 | n/a | 0.6235 | 0.7243 | 0.5399 | 0.6496 |
-| llamaparse_agentic | 0.9799 | 0.4892 | n/a | 0.5533 | 0.3175 | 0.4765 | 0.5633 |
-| llamaparse_agentic_plus | 0.5670 | 0.1759 | n/a | 0.6948 | 0.4044 | 0.3855 | 0.4455 |
+| qwen3.8-27b | 0.8711 | 0.4893 | n/a | 0.6235 | 0.7243 | 0.5412 | 0.6499 |
+| llamaparse_agentic | 0.9799 | 0.4892 | n/a | 0.5533 | 0.3175 | 0.4778 | 0.5635 |
+| llamaparse_agentic_plus | 0.5670 | 0.1759 | n/a | 0.6948 | 0.4044 | 0.3873 | 0.4459 |
 | feras_model | 0.7895 | 0.4530 | n/a | 0.4002 | 0.3233 | 0.1977 | 0.4328 |
-| mistral_ocr_4 | 0.4086 | 0.5045 | n/a | 0.3998 | 0.4365 | 0.4088 | 0.4316 |
-| gpt-5-mini | 0.2528 | 0.1076 | n/a | 0.3734 | 0.2190 | 0.2390 | 0.2384 |
-| mistral-medium-3.1 | 0.3464 | 0.2333 | n/a | 0.1402 | 0.1904 | 0.1540 | 0.2129 |
+| mistral_ocr_4 | 0.4086 | 0.5045 | n/a | 0.3998 | 0.4365 | 0.4096 | 0.4318 |
+| gpt-5-mini | 0.2528 | 0.1076 | n/a | 0.3734 | 0.2190 | 0.2387 | 0.2383 |
+| mistral-medium-3.1 | 0.3464 | 0.2333 | n/a | 0.1402 | 0.1904 | 0.1537 | 0.2128 |
 | qwen3.7-flash | **fail** | 0.5086 | n/a | **fail** | 0.4615 | **fail** | *2/5* |
 | qwen3.5-9b | 0.7477 | **fail** | n/a | **fail** | **fail** | **fail** | *1/5* |
 
@@ -46,16 +46,33 @@ Content agreement over the paired table grids.
 
 | system | test_1 | test_2 | test_3 | test_4 | test_5 | test_6 | mean |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| qwen3.8-27b | 0.9466 | 0.8501 | n/a | 0.7850 | 0.8786 | 0.7541 | 0.8429 |
-| gemini-3.5-flash-lite | 0.8211 | 0.7508 | n/a | 0.8426 | 0.7110 | 0.6920 | 0.7635 |
-| llamaparse_agentic | 0.9962 | 0.6740 | n/a | 0.6131 | 0.4580 | 0.6555 | 0.6793 |
-| mistral_ocr_4 | 0.7580 | 0.7252 | n/a | 0.5804 | 0.6058 | 0.6259 | 0.6591 |
-| feras_model | 0.8983 | 0.6772 | n/a | 0.6279 | 0.5750 | 0.4202 | 0.6397 |
-| llamaparse_agentic_plus | 0.7438 | 0.5064 | n/a | 0.7173 | 0.5763 | 0.6236 | 0.6335 |
-| mistral-medium-3.1 | 0.6420 | 0.5062 | n/a | 0.3999 | 0.4467 | 0.4973 | 0.4984 |
-| gpt-5-mini | 0.5557 | 0.3403 | n/a | 0.6731 | 0.3405 | 0.5379 | 0.4895 |
+| qwen3.8-27b | 0.9466 | 0.8501 | n/a | 0.7850 | 0.8786 | 0.7545 | 0.8430 |
+| gemini-3.5-flash-lite | 0.8211 | 0.7508 | n/a | 0.8426 | 0.7110 | 0.6924 | 0.7636 |
+| llamaparse_agentic | 0.9962 | 0.6740 | n/a | 0.6131 | 0.4580 | 0.6558 | 0.6794 |
+| mistral_ocr_4 | 0.7580 | 0.7252 | n/a | 0.5804 | 0.6058 | 0.6263 | 0.6591 |
+| feras_model | 0.8983 | 0.6772 | n/a | 0.6279 | 0.5750 | 0.4206 | 0.6398 |
+| llamaparse_agentic_plus | 0.7438 | 0.5064 | n/a | 0.7173 | 0.5763 | 0.6240 | 0.6336 |
+| mistral-medium-3.1 | 0.6420 | 0.5062 | n/a | 0.3999 | 0.4467 | 0.4974 | 0.4984 |
+| gpt-5-mini | 0.5557 | 0.3403 | n/a | 0.6731 | 0.3405 | 0.5380 | 0.4895 |
 | qwen3.7-flash | **fail** | 0.7171 | n/a | **fail** | 0.6864 | **fail** | *2/5* |
 | qwen3.5-9b | 0.8801 | **fail** | n/a | **fail** | **fail** | **fail** | *1/5* |
+
+### F — arithmetic consistency
+
+Share of the statement's own declared identities that the system's extracted figures satisfy, under exact `Fraction` arithmetic. A relation whose figures the system never produced counts against it: arithmetic credit cannot be earned by declining to answer. **Never combined with P or E** — a system that parses cleanly and computes wrongly is not partially correct.
+
+| system | test_1 | test_2 | test_3 | test_4 | test_5 | test_6 | mean |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| feras_model | 1.0000 | 0.2500 | n/a | 0.0000 | 0.5263 | 0.1481 | 0.3849 |
+| llamaparse_agentic | 1.0000 | 0.2500 | n/a | 0.0000 | 0.0526 | 0.0000 | 0.2605 |
+| mistral_ocr_4 | 1.0000 | 0.2500 | n/a | 0.0000 | 0.0526 | 0.0000 | 0.2605 |
+| llamaparse_agentic_plus | 0.0000 | 0.0000 | n/a | 1.0000 | 0.2105 | 0.0000 | 0.2421 |
+| gemini-3.5-flash-lite | 0.8125 | 0.2500 | n/a | 0.0000 | 0.0000 | 0.0741 | 0.2273 |
+| qwen3.8-27b | 0.5625 | 0.4375 | n/a | 0.0000 | 0.1053 | 0.0000 | 0.2211 |
+| qwen3.5-9b | 0.8750 | **fail** | n/a | **fail** | **fail** | **fail** | *1/5* |
+| mistral-medium-3.1 | 0.0625 | 0.3750 | n/a | 0.0000 | 0.0000 | 0.0000 | 0.0875 |
+| qwen3.7-flash | **fail** | 0.1875 | n/a | **fail** | 0.2105 | **fail** | *2/5* |
+| gpt-5-mini | 0.0625 | 0.0000 | n/a | 0.0000 | 0.0000 | 0.2593 | 0.0644 |
 
 ### Diagnostic — script fidelity
 

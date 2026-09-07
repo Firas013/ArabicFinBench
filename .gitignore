@@ -239,9 +239,31 @@ arabicfinbench/data/*
 # financial filings carry per-publisher redistribution terms, and git history is
 # permanent. Enforced by scripts/hooks/pre-commit and CI.
 # See arabicfinbench/gt/CONVENTIONS.md section 6.
-test_1/
-dataset/
+# Anchored to the repository root: the old top-level fixture directory. Without
+# the leading slash this also matched dataset/test_1/, quietly excluding that
+# document's ground truth while its five siblings were tracked.
+/test_1/
 fixtures_local/
+
+# test_3's ground truth is a byte-identical copy of test_4's and describes the
+# wrong document (see docs/results_all.md). Tracking it would publish an answer
+# key that answers a different question; it is excluded deliberately, not by
+# oversight, and the exclusion goes away when the Saudi Cement filing is
+# actually annotated.
+dataset/test_3/
+
+# The corpus directory holds two different kinds of file and they get opposite
+# treatment. The filings themselves are never committed (section 6). The ground
+# truth and its generated sidecars ARE the annotation, and tracking them is what
+# lets someone else clone this repository and re-score a system without
+# re-annotating anything. Ignoring dataset/ wholesale took the annotations out
+# with the documents.
+dataset/**/*.pdf
+dataset/**/*.docx
+dataset/**/*.jfif
+dataset/**/*.png
+dataset/**/*.jpg
+dataset/**/*.jpeg
 
 # Scored-results store. Upstream ignores "results/" as run scratch; ours is the
 # opposite - an append-only measurement record, stamped with the canon version

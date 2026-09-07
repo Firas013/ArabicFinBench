@@ -78,6 +78,7 @@ def main() -> int:
     args = ap.parse_args()
 
     from arabicfinbench import results
+    from arabicfinbench.gt.relations import for_document
     from arabicfinbench.scoring import CANON_VERSION, score_document
 
     pdfs = sorted(args.input_dir.glob("*.pdf"))
@@ -100,7 +101,12 @@ def main() -> int:
         f"  PRED {predicted.count('<table')} tables / {len(predicted)} chars"
     )
 
-    score = score_document(expected, predicted, source=f"{args.system}/{document}")
+    score = score_document(
+        expected,
+        predicted,
+        source=f"{args.system}/{document}",
+        relations=for_document(document),
+    )
     row = results.from_document_score(
         score,
         system=args.system,

@@ -35,17 +35,33 @@
 
 | system | script fidelity | $/page | latency | scored at |
 | --- | --- | --- | --- | --- |
-| qwen3.8-27b | 1.0000 | - | - | 2026-09-07T17:11:41 |
-| gemini-3.5-flash-lite | 1.0000 | - | - | 2026-09-07T17:11:34 |
-| qwen3.7-flash | 1.0000 | - | - | 2026-09-07T17:11:31 |
-| mistral_ocr_4 | 1.0000 | 0.0040 | 2.2s | 2026-09-07T17:11:47 |
-| llamaparse_agentic_plus | 0.9185 | 0.0563 | 53.2s | 2026-09-07T17:11:45 |
-| feras_model | 1.0000 | 0.0000 | - | 2026-09-07T17:14:47 |
-| llamaparse_agentic | 1.0000 | 0.0125 | 54.3s | 2026-09-07T17:11:43 |
-| gpt-5-mini | 1.0000 | - | - | 2026-09-07T17:11:35 |
-| mistral-medium-3.1 | 1.0000 | - | - | 2026-09-07T17:11:38 |
+| qwen3.8-27b | 1.0000 | - | - | 2026-09-07T17:45:08 |
+| gemini-3.5-flash-lite | 1.0000 | - | - | 2026-09-07T17:45:01 |
+| qwen3.7-flash | 1.0000 | - | - | 2026-09-07T17:44:59 |
+| mistral_ocr_4 | 1.0000 | 0.0040 | 2.2s | 2026-09-07T17:45:14 |
+| llamaparse_agentic_plus | 0.9185 | 0.0563 | 53.2s | 2026-09-07T17:45:12 |
+| feras_model | 1.0000 | 0.0000 | - | 2026-09-07T17:48:16 |
+| llamaparse_agentic | 1.0000 | 0.0125 | 54.3s | 2026-09-07T17:45:10 |
+| gpt-5-mini | 1.0000 | - | - | 2026-09-07T17:45:03 |
+| mistral-medium-3.1 | 1.0000 | - | - | 2026-09-07T17:45:06 |
 
-**F (arithmetic): not reported — no MATH rules are authored for this document yet. The mechanism exists and is tested; the rules are a ground-truth authoring task.**
+## F — arithmetic consistency
+
+Does the system's *own* output add up? 19 identities are declared for this document — block sums and totals taken from the statement itself — and evaluated against each system's extracted figures under exact `Fraction` arithmetic. A relation whose figures the system never produced counts against it rather than being dropped: a system cannot earn arithmetic credit by declining to answer. `F (evaluable)` restricts to the relations it did supply figures for, which separates computing badly from extracting sparsely.
+
+| system | F | F (evaluable) | reconciling | evaluable | declared |
+| --- | --- | --- | --- | --- | --- |
+| feras_model | **0.5263** | 0.7143 | 10 | 14 | 19 |
+| qwen3.7-flash | **0.2105** | 1.0000 | 4 | 4 | 19 |
+| llamaparse_agentic_plus | **0.2105** | 1.0000 | 4 | 4 | 19 |
+| qwen3.8-27b | **0.1053** | 1.0000 | 2 | 2 | 19 |
+| mistral_ocr_4 | **0.0526** | 1.0000 | 1 | 1 | 19 |
+| llamaparse_agentic | **0.0526** | 0.2500 | 1 | 4 | 19 |
+| gemini-3.5-flash-lite | **0.0000** | 0.0000 | 0 | 7 | 19 |
+| gpt-5-mini | **0.0000** | - | 0 | 0 | 19 |
+| mistral-medium-3.1 | **0.0000** | - | 0 | 0 | 19 |
+
+*P, E and F are reported separately and never combined. A system that parses cleanly and computes wrongly is not partially correct — it produces confident, well-formed, wrong financial figures.*
 
 **No combined P/E/F score is emitted, by construction.** See `docs/fairness.md` guard 10.
 

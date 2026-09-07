@@ -19,7 +19,7 @@ checkable instead of remembered.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -50,6 +50,13 @@ class StoredScore:
     null_judged: int = 0
     tables_paired: int = 0
     tables_actual: int = 0
+    # F. None when the document declares no relations. The counts travel with
+    # the rate because "got the sum wrong" and "never produced the figures" are
+    # different failures and a single ratio hides which one happened.
+    arithmetic_consistency: float | None = None
+    arithmetic_declared: int = 0
+    arithmetic_evaluable: int = 0
+    arithmetic_reconciling: int = 0
     cost_per_page_usd: float | None = None
     median_latency_ms: float | None = None
     status: str = "api"  # api | hand-imported | externally-reported
@@ -79,6 +86,10 @@ class StoredScore:
             "null_judged": self.null_judged,
             "tables_paired": self.tables_paired,
             "tables_actual": self.tables_actual,
+            "arithmetic_consistency": self.arithmetic_consistency,
+            "arithmetic_declared": self.arithmetic_declared,
+            "arithmetic_evaluable": self.arithmetic_evaluable,
+            "arithmetic_reconciling": self.arithmetic_reconciling,
             "cost_per_page_usd": self.cost_per_page_usd,
             "median_latency_ms": self.median_latency_ms,
             "status": self.status,
@@ -89,7 +100,11 @@ class StoredScore:
     def from_json(cls, payload: dict[str, Any]) -> StoredScore:
         payload = dict(payload)
         payload["notes"] = tuple(payload.get("notes") or ())
-        return cls(**payload)
+        # The store is append-only, so rows written before a field existed are
+        # still read back. Dropping unknown keys rather than raising keeps an
+        # older row readable; a field added later simply defaults.
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in payload.items() if k in known})
 
 
 def from_document_score(
@@ -131,6 +146,10 @@ def from_document_score(
         null_judged=score.nulls.considered if score.nulls else 0,
         tables_paired=int(struct.get("tables_paired", 0)),
         tables_actual=int(struct.get("tables_actual", 0)),
+        arithmetic_consistency=score.arithmetic.consistency if score.arithmetic else None,
+        arithmetic_declared=score.arithmetic.declared if score.arithmetic else 0,
+        arithmetic_evaluable=score.arithmetic.evaluable if score.arithmetic else 0,
+        arithmetic_reconciling=score.arithmetic.reconciling if score.arithmetic else 0,
         cost_per_page_usd=cost_per_page_usd,
         median_latency_ms=median_latency_ms,
         status=status,

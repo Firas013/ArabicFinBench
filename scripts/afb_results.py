@@ -67,6 +67,7 @@ def _facts(pipeline: str, output_root: Path) -> tuple[float | None, float | None
 
 
 def record(pipelines: list[str], *, input_dir: Path, output_root: Path) -> list[StoredScore]:
+    from arabicfinbench.gt.relations import for_document
     from arabicfinbench.scoring import score_document
     from extract_bench.test_cases.loader import load_test_cases
 
@@ -85,7 +86,12 @@ def record(pipelines: list[str], *, input_dir: Path, output_root: Path) -> list[
                 continue
             payload = json.loads(result.read_text(encoding="utf-8"))
             markdown = (payload.get("output") or {}).get("markdown") or ""
-            score = score_document(case.expected_markdown or "", markdown, source=pipeline)
+            score = score_document(
+                case.expected_markdown or "",
+                markdown,
+                source=pipeline,
+                relations=for_document(case.test_id),
+            )
             cost, latency = _facts(pipeline, output_root)
             status = "hand-imported" if (payload.get("provenance") or {}).get("hand_imported") else "api"
             entries.append(
@@ -204,11 +210,42 @@ def show(
             f"{_fmt(e.cost_per_page_usd)} | {latency} | {e.scored_at[:19]} |"
         )
 
-    out.append(
-        "\n**F (arithmetic): not reported — no MATH rules are authored for this "
-        "document yet. The mechanism exists and is tested; the rules are a "
-        "ground-truth authoring task.**"
-    )
+    declared = next((e.arithmetic_declared for e in ranked if e.arithmetic_declared), 0)
+    if declared:
+        out.append("\n## F — arithmetic consistency\n")
+        out.append(
+            f"Does the system's *own* output add up? {declared} identities are declared "
+            "for this document — block sums and totals taken from the statement itself — "
+            "and evaluated against each system's extracted figures under exact "
+            "`Fraction` arithmetic. A relation whose figures the system never produced "
+            "counts against it rather than being dropped: a system cannot earn "
+            "arithmetic credit by declining to answer. `F (evaluable)` restricts to the "
+            "relations it did supply figures for, which separates computing badly from "
+            "extracting sparsely.\n"
+        )
+        out.append("| system | F | F (evaluable) | reconciling | evaluable | declared |")
+        out.append("|" + " --- |" * 6)
+        for e in sorted(ranked, key=lambda x: -(x.arithmetic_consistency or 0)):
+            evaluable = (
+                "-"
+                if not e.arithmetic_evaluable
+                else f"{e.arithmetic_reconciling / e.arithmetic_evaluable:.4f}"
+            )
+            out.append(
+                f"| {_display_name(e.system)} | **{_fmt(e.arithmetic_consistency)}** | {evaluable} | "
+                f"{e.arithmetic_reconciling} | {e.arithmetic_evaluable} | {e.arithmetic_declared} |"
+            )
+        out.append(
+            "\n*P, E and F are reported separately and never combined. A system that "
+            "parses cleanly and computes wrongly is not partially correct — it produces "
+            "confident, well-formed, wrong financial figures.*"
+        )
+    else:
+        out.append(
+            "\n**F (arithmetic): not reported — no relations are declared for this "
+            "document. The mechanism exists and is tested; declaring them is a "
+            "ground-truth authoring task.**"
+        )
     out.append("\n**No combined P/E/F score is emitted, by construction.** See `docs/fairness.md` guard 10.")
     routed = sorted(_display_name(e.system) for e in ranked if e.system.startswith("or_"))
     if routed:

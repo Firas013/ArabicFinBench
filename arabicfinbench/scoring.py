@@ -42,6 +42,7 @@ from arabicfinbench.dimensions.cells import (
     compute_coverage,
     compute_numeric_exactness,
 )
+from arabicfinbench.dimensions.arithmetic.score import ArithmeticReport, score_relations
 from arabicfinbench.dimensions.nulls import NullReport, compute_null_correctness
 from arabicfinbench.guards import assert_clean_encoding
 
@@ -86,6 +87,9 @@ class DocumentScore:
     coverage: CoverageReport | None = None
     numeric: NumericReport | None = None
     nulls: NullReport | None = None
+    # F. None when the document declares no relations -- an absence of rules is
+    # reported as an absence, never as a score of zero.
+    arithmetic: ArithmeticReport | None = None
 
     @property
     def raw_to_struct_delta(self) -> dict[str, float]:
@@ -222,6 +226,7 @@ def score_document(
     evaluator=None,  # noqa: ANN001 - upstream ParseEvaluator; imported lazily
     fold_letters: bool = False,
     source: str = "document",
+    relations: list[dict] | None = None,
 ) -> DocumentScore:
     """Score one prediction against one ground truth, symmetrically.
 
@@ -294,6 +299,29 @@ def score_document(
     )
     pred_grids = _align_to_pairing(gt_grids, pred_grids, table_pairing(struct_values))
 
+    # F. Relations are authored in ground-truth coordinates, so they are mapped
+    # onto the canonical grid the metrics use; the prediction is then read at
+    # the same canonical position, which is exactly the correspondence the cell
+    # metrics already rely on.
+    arithmetic = None
+    if relations:
+        from arabicfinbench.dimensions.arithmetic.coords import map_document, value_at
+
+        maps = map_document(text_expected)
+        values: dict[str, str | None] = {}
+        for relation in relations:
+            for ref in [relation["total"], *relation["addends"]]:
+                if ref in values:
+                    continue
+                t, r, c = _parse_ref(str(ref))
+                located = maps[t].locate(r, c) if t < len(maps) else None
+                values[str(ref)] = (
+                    value_at(pred_grids[t], *located)
+                    if located is not None and t < len(pred_grids)
+                    else None
+                )
+        arithmetic = score_relations(relations, values)
+
     return DocumentScore(
         passes=passes,
         gt_trace=SideTrace(gt_text_fired, gt_struct_fired, tuple(gt_tables)),
@@ -302,4 +330,16 @@ def score_document(
         coverage=compute_coverage(gt_grids, pred_grids),
         numeric=compute_numeric_exactness(gt_grids, pred_grids),
         nulls=compute_null_correctness(gt_grids, pred_grids),
+        arithmetic=arithmetic,
     )
+
+
+_REF_RE = re.compile(r"^t(\d+)\.r(\d+)\.c(\d+)$")
+
+
+def _parse_ref(ref: str) -> tuple[int, int, int]:
+    """Split ``t0.r34.c1`` into ground-truth coordinates."""
+    match = _REF_RE.match(ref)
+    if not match:
+        raise ValueError(f"{ref!r}: expected the form t<table>.r<row>.c<col>")
+    return int(match.group(1)), int(match.group(2)), int(match.group(3))

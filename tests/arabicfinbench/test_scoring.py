@@ -85,8 +85,24 @@ PRED_ARABIC_WRONG = _table(
 
 class TestSymmetryIsStructural:
     def test_no_parameter_can_canonicalize_one_side_only(self) -> None:
+        """The signature is pinned so a per-side canon knob cannot be added quietly.
+
+        Any addition here has to be argued for. ``relations`` (added with the F
+        axis) qualifies: it names identities to evaluate, and ``fold_letters``
+        remains the only canon control — applied, like every other, to both
+        sides inside one call.
+        """
         params = set(inspect.signature(score_document).parameters)
-        assert params == {"expected_markup", "actual_markup", "evaluator", "fold_letters", "source"}
+        assert params == {
+            "expected_markup",
+            "actual_markup",
+            "evaluator",
+            "fold_letters",
+            "source",
+            "relations",
+        }
+        canon_controls = {p for p in params if "fold" in p or "canon" in p}
+        assert canon_controls == {"fold_letters"}
 
     def test_pair_that_needs_gt_side_canon(self) -> None:
         # GT in Arabic-Indic, prediction already canonical. Canonicalising the

@@ -145,6 +145,16 @@ def main() -> int:
         "Content agreement over the paired table grids.",
     )
     out += table(
+        rows, systems, "arithmetic_consistency", None,
+        "F — arithmetic consistency",
+        "Share of the statement's own declared identities that the system's "
+        "extracted figures satisfy, under exact `Fraction` arithmetic. A relation "
+        "whose figures the system never produced counts against it: arithmetic "
+        "credit cannot be earned by declining to answer. **Never combined with P "
+        "or E** — a system that parses cleanly and computes wrongly is not "
+        "partially correct.",
+    )
+    out += table(
         rows, systems, "script_fidelity", None,
         "Diagnostic — script fidelity",
         "Fraction of the raw prediction's digit runs written in the script the "
