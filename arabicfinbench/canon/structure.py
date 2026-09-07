@@ -100,6 +100,7 @@ class TableReport:
     label_column: int | None = None
     column_permutation: tuple[int, ...] | None = None
     column_order_skipped: str | None = None
+    padded_rows: int = 0  # short rows filled to the table's width before ordering
 
     @property
     def sections_removed(self) -> int:
@@ -264,9 +265,26 @@ def normalize_table_columns(table_html: str, report: TableReport) -> tuple[str, 
     """Rewrite one (section-free) table into canonical column order.
 
     Cells are moved verbatim — attributes and inner markup intact — only their
-    order within each row changes. Ragged tables and residual colspans make a
-    permutation ill-defined; those are skipped and the reason recorded, never
-    silently guessed at.
+    order within each row changes. Residual colspans make a permutation
+    ill-defined; those are skipped and the reason recorded, never silently
+    guessed at.
+
+    **Short rows are padded to the table's width rather than skipping it.**
+    Declining on a ragged table looks like caution and is the opposite. The rule
+    runs on both sides, so it fires on the rectangular ground truth and declines
+    on a prediction that emitted one uneven row — leaving the two sides in
+    different column frames and charging the difference to the model. Measured
+    on the SADAFCO filing: a system with six ragged tables scored 0.0986 digit
+    exactness where its own output, mirrored, gave 0.50; a system emitting
+    rectangular tables over the same page scored 0.7254. That gap was raggedness,
+    not reading.
+
+    Padding assumes a missing cell is trailing, which is what the ground-truth
+    convention already assumes of the annotator (``adding_a_document.md`` §2:
+    "Pad short rows with ``\"\"``"). A cell dropped mid-row still misaligns that
+    row — but only that row, where skipping misaligned every row in the table.
+    The count is recorded so a document held together by padding is visible
+    rather than assumed.
     """
     row_matches = list(_ROW_RE.finditer(table_html))
     if not row_matches:
@@ -274,8 +292,13 @@ def normalize_table_columns(table_html: str, report: TableReport) -> tuple[str, 
 
     parsed = [_cells(m.group(0)) for m in row_matches]
     widths = {len(cells) for cells in parsed}
-    if len(widths) != 1:
-        return table_html, replace(report, column_order_skipped="ragged")
+    if len(widths) > 1:
+        width = max(widths)
+        short = sum(1 for cells in parsed if len(cells) < width)
+        parsed = [
+            cells + [_Cell(text="", colspan=1)] * (width - len(cells)) for cells in parsed
+        ]
+        report = replace(report, padded_rows=short)
     if any(c.colspan > 1 for cells in parsed for c in cells):
         return table_html, replace(report, column_order_skipped="colspan")
 
@@ -283,7 +306,10 @@ def normalize_table_columns(table_html: str, report: TableReport) -> tuple[str, 
     if order is None:
         return table_html, replace(report, column_order_skipped="too-small")
     report = replace(report, label_column=order[0], column_permutation=order)
-    if order == tuple(range(len(order))):
+    # Padding has to reach the markup even when the order is already canonical:
+    # the cell metrics read the emitted grid, and a row left short there is an
+    # uncovered cell rather than an empty one.
+    if order == tuple(range(len(order))) and not report.padded_rows:
         return table_html, report
 
     pieces: list[str] = []
@@ -293,7 +319,10 @@ def normalize_table_columns(table_html: str, report: TableReport) -> tuple[str, 
         cell_matches = list(_CELL_RE.finditer(row_html))
         open_tag = _ROW_OPEN_RE.match(row_html)
         assert open_tag is not None  # _ROW_RE guarantees the row opens with <tr
-        rebuilt = open_tag.group(0) + "".join(cell_matches[i].group(0) for i in order) + "</tr>"
+        cells_out = [
+            cell_matches[i].group(0) if i < len(cell_matches) else "<td></td>" for i in order
+        ]
+        rebuilt = open_tag.group(0) + "".join(cells_out) + "</tr>"
         pieces.append(table_html[cursor : m.start()])
         pieces.append(rebuilt)
         cursor = m.end()

@@ -109,7 +109,17 @@ class TestOppositeConventionsConverge:
 
 
 class TestColumnOrderRefusesToGuess:
-    def test_ragged_tables_are_skipped_with_a_named_reason(self) -> None:
+    def test_ragged_tables_are_padded_and_ordered_not_skipped(self) -> None:
+        """Superseded by canon 0.7.0; this test previously asserted a skip.
+
+        Skipping read as caution and was the opposite. The rule runs on both
+        sides, so declining here meant it fired on a rectangular ground truth
+        and skipped a prediction with one uneven row, leaving the two in
+        different column frames — and the difference was charged to the model.
+        Short rows are now padded to the table's width, which is what the
+        ground-truth convention already requires of the annotator, and the count
+        is reported so a document held together by padding stays visible.
+        """
         ragged = (
             "<table>"
             "<tr><td>ا</td><td>ب</td><td>ج</td></tr>"
@@ -118,8 +128,11 @@ class TestColumnOrderRefusesToGuess:
             "</table>"
         )
         out, report = canonicalize_table_structure(ragged)
-        assert out == ragged
-        assert report.column_order_skipped == "ragged"
+        assert report.column_order_skipped is None
+        assert report.padded_rows == 1
+        assert report.column_permutation is not None
+        # Every row leaves rectangular: the cell metrics read this grid.
+        assert out.count("<td") == out.count("<tr") * 3
 
     def test_residual_colspans_are_skipped_with_a_named_reason(self) -> None:
         # A colspan that is not a section (two non-empty cells) survives the

@@ -1,4 +1,4 @@
-# ArabicFinBench — full corpus matrix (canon 0.6.0)
+# ArabicFinBench — full corpus matrix (canon 0.7.0)
 
 Every system against every document, from the stored measurements in `results/scores.jsonl`. Column meanings: [docs/metrics.md](metrics.md).
 
@@ -12,14 +12,14 @@ The score. Canon applied symmetrically to both sides.
 
 | system | test_1 | test_2 | test_3 | test_4 | test_5 | test_6 | mean |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| qwen3.8-27b | 0.8711 | 0.4893 | n/a | 0.6235 | 0.7243 | 0.5232 | 0.6463 |
-| gemini-3.5-flash-lite | 0.7648 | 0.4682 | n/a | 0.6778 | 0.5801 | 0.3884 | 0.5758 |
-| llamaparse_agentic | 0.9799 | 0.4892 | n/a | 0.5533 | 0.3268 | 0.4480 | 0.5594 |
+| gemini-3.5-flash-lite | 0.7648 | 0.6219 | n/a | 0.7623 | 0.6767 | 0.4802 | 0.6612 |
+| qwen3.8-27b | 0.8711 | 0.4893 | n/a | 0.6235 | 0.7243 | 0.5399 | 0.6496 |
+| llamaparse_agentic | 0.9799 | 0.4892 | n/a | 0.5533 | 0.3175 | 0.4765 | 0.5633 |
+| llamaparse_agentic_plus | 0.5670 | 0.1759 | n/a | 0.6948 | 0.4044 | 0.3855 | 0.4455 |
 | feras_model | 0.7895 | 0.4530 | n/a | 0.4002 | 0.3233 | 0.1977 | 0.4328 |
-| llamaparse_agentic_plus | 0.5670 | 0.1759 | n/a | 0.6514 | 0.3889 | 0.3784 | 0.4323 |
 | mistral_ocr_4 | 0.4086 | 0.5045 | n/a | 0.3998 | 0.4365 | 0.4088 | 0.4316 |
 | gpt-5-mini | 0.2528 | 0.1076 | n/a | 0.3734 | 0.2190 | 0.2390 | 0.2384 |
-| mistral-medium-3.1 | 0.3464 | 0.2333 | n/a | 0.1431 | 0.1917 | 0.1208 | 0.2071 |
+| mistral-medium-3.1 | 0.3464 | 0.2333 | n/a | 0.1402 | 0.1904 | 0.1540 | 0.2129 |
 | qwen3.7-flash | **fail** | 0.5086 | n/a | **fail** | 0.4615 | **fail** | *2/5* |
 | qwen3.5-9b | 0.7477 | **fail** | n/a | **fail** | **fail** | **fail** | *1/5* |
 
@@ -46,13 +46,13 @@ Content agreement over the paired table grids.
 
 | system | test_1 | test_2 | test_3 | test_4 | test_5 | test_6 | mean |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| qwen3.8-27b | 0.9466 | 0.8501 | n/a | 0.7850 | 0.8786 | 0.7391 | 0.8399 |
-| gemini-3.5-flash-lite | 0.8211 | 0.7048 | n/a | 0.8173 | 0.6860 | 0.6683 | 0.7395 |
-| llamaparse_agentic | 0.9962 | 0.6740 | n/a | 0.6131 | 0.4718 | 0.6491 | 0.6808 |
+| qwen3.8-27b | 0.9466 | 0.8501 | n/a | 0.7850 | 0.8786 | 0.7541 | 0.8429 |
+| gemini-3.5-flash-lite | 0.8211 | 0.7508 | n/a | 0.8426 | 0.7110 | 0.6920 | 0.7635 |
+| llamaparse_agentic | 0.9962 | 0.6740 | n/a | 0.6131 | 0.4580 | 0.6555 | 0.6793 |
 | mistral_ocr_4 | 0.7580 | 0.7252 | n/a | 0.5804 | 0.6058 | 0.6259 | 0.6591 |
 | feras_model | 0.8983 | 0.6772 | n/a | 0.6279 | 0.5750 | 0.4202 | 0.6397 |
-| llamaparse_agentic_plus | 0.7438 | 0.5064 | n/a | 0.7061 | 0.5732 | 0.6305 | 0.6320 |
-| mistral-medium-3.1 | 0.6420 | 0.5062 | n/a | 0.4256 | 0.4495 | 0.4877 | 0.5022 |
+| llamaparse_agentic_plus | 0.7438 | 0.5064 | n/a | 0.7173 | 0.5763 | 0.6236 | 0.6335 |
+| mistral-medium-3.1 | 0.6420 | 0.5062 | n/a | 0.3999 | 0.4467 | 0.4973 | 0.4984 |
 | gpt-5-mini | 0.5557 | 0.3403 | n/a | 0.6731 | 0.3405 | 0.5379 | 0.4895 |
 | qwen3.7-flash | **fail** | 0.7171 | n/a | **fail** | 0.6864 | **fail** | *2/5* |
 | qwen3.5-9b | 0.8801 | **fail** | n/a | **fail** | **fail** | **fail** | *1/5* |

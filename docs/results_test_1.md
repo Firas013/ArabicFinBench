@@ -1,5 +1,5 @@
 
-# ArabicFinBench — test_1/Test_1  (canon 0.6.0)
+# ArabicFinBench — test_1/Test_1  (canon 0.7.0)
 
 **What each column means: [docs/metrics.md](metrics.md).** In short — `struct` is the score, `raw` is what an unnormalised leaderboard would show, and the gap between them is convention rather than reading quality.
 
@@ -35,15 +35,15 @@
 
 | system | script fidelity | $/page | latency | scored at |
 | --- | --- | --- | --- | --- |
-| llamaparse_agentic | 0.0000 | 0.0125 | 54.3s | 2026-09-07T16:02:21 |
-| qwen3.8-27b | 1.0000 | - | - | 2026-09-07T16:02:19 |
-| feras_model | 1.0000 | 0.0000 | - | 2026-09-07T16:05:49 |
-| gemini-3.5-flash-lite | 1.0000 | - | - | 2026-09-07T16:02:17 |
-| qwen3.5-9b | 1.0000 | - | - | 2026-09-07T16:02:20 |
-| llamaparse_agentic_plus | 0.9972 | 0.0563 | 53.2s | 2026-09-07T16:02:22 |
-| mistral_ocr_4 | 1.0000 | 0.0040 | 2.2s | 2026-09-07T16:02:22 |
-| mistral-medium-3.1 | 1.0000 | - | - | 2026-09-07T16:02:19 |
-| gpt-5-mini | 1.0000 | - | - | 2026-09-07T16:02:18 |
+| llamaparse_agentic | 0.0000 | 0.0125 | 54.3s | 2026-09-07T17:09:02 |
+| qwen3.8-27b | 1.0000 | - | - | 2026-09-07T17:09:00 |
+| feras_model | 1.0000 | 0.0000 | - | 2026-09-07T17:14:16 |
+| gemini-3.5-flash-lite | 1.0000 | - | - | 2026-09-07T17:08:58 |
+| qwen3.5-9b | 1.0000 | - | - | 2026-09-07T17:09:01 |
+| llamaparse_agentic_plus | 0.9972 | 0.0563 | 53.2s | 2026-09-07T17:09:02 |
+| mistral_ocr_4 | 1.0000 | 0.0040 | 2.2s | 2026-09-07T17:09:03 |
+| mistral-medium-3.1 | 1.0000 | - | - | 2026-09-07T17:09:00 |
+| gpt-5-mini | 1.0000 | - | - | 2026-09-07T17:08:59 |
 
 **F (arithmetic): not reported — no MATH rules are authored for this document yet. The mechanism exists and is tested; the rules are a ground-truth authoring task.**
 

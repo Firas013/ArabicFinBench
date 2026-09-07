@@ -101,8 +101,20 @@ def from_document_score(
     median_latency_ms: float | None = None,
     status: str = "api",
 ) -> StoredScore:
-    """Flatten a DocumentScore into the persisted shape."""
+    """Flatten a DocumentScore into the persisted shape.
+
+    An empty prediction is forced to ``status="failed"`` regardless of what the
+    caller passed. ``score_document`` already detects it and zeroes every
+    dimension, but a zeroed row carrying ``status="api"`` enters the ranked
+    tables as a measurement, and "this system transcribes nothing correctly" is
+    a different claim from "this route returned nothing". Guard 5 wants the
+    failure listed with its reason, not ranked. Enforcing it here rather than in
+    each caller means no scoring path can record one by omission -- two such
+    rows reached the store before this existed, and were only caught by hand.
+    """
     struct = score.passes.get("struct", {})
+    if getattr(score, "empty_prediction", False):
+        status = "failed"
     return StoredScore(
         system=system,
         document=document,
