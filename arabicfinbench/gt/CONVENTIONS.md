@@ -104,7 +104,8 @@ are distributed through the Hugging Face dataset; only ground truth and
 annotations are tracked here.
 
 This is enforced by `scripts/hooks/pre-commit` and by CI, not by good
-intentions. See `arabicfinbench/data/README.md`.
+intentions. See `dataset/README.md` for the corpus layout and which files in it
+are tracked.
 
 A public fixture must come from a filing with confirmed redistribution rights —
 a Tadawul-published statement, for instance. A redacted private document is

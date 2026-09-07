@@ -149,24 +149,29 @@ arabicfinbench/
   determinism.py          # determinism classes and seed policy
   leaderboard.py          # the generator and its refusals
   concepts/               # financial concept definitions (stub)
-  dimensions/arithmetic/  # arithmetic evaluation dimension (stub)
+  dimensions/             # the scored dimensions
+    cells.py              #   E: coverage, numeric exactness
+    nulls.py              #   E: null correctness
+    arithmetic/           #   F: declared identities, evaluated
   gt/                     # ground truth + integrity code (admission gate,
-                          #   consensus rule, splits, freeze, corrections log)
-  data/                   # local corpora (untracked; see data/README.md)
-scripts/afb_gt_to_sidecar.py   # raw GT -> harness sidecar + expected_markdown
-scripts/afb_score_parse.py     # raw | text | struct P scoring + diagnostics
-scripts/afb_import_datalab.py  # hand-run import (dev only; stamped as such)
-scripts/afb_leaderboard.py     # row assembly + admission (rejections named)
-scripts/afb_consensus.py       # consensus-against-GT flagging
-scripts/afb_freeze.py          # test-split sha256 commitment
+                          #   consensus rule, relations, splits, freeze,
+                          #   corrections log)
+  runs/                   # per-system provenance declarations
+dataset/                  # the corpus, one directory per document
+                          #   ground truth tracked, filings never
+                          #   see dataset/README.md
+results/scores.jsonl      # the append-only measurement record
+scripts/                  # command-line entry points; see scripts/README.md
+docs/                     # metrics, fairness guards, results tables
 tests/arabicfinbench/     # tests for the overlay (one per fairness guard)
 src/extract_bench/        # upstream harness (modifications enumerated in NOTICE)
 ```
 
 `arabicfinbench/` is an importable package (declared in hatchling's
-`packages` and shipped in the wheel). `gt/` holds both the tracked ground
-truth and the code that gates it (schema validation, arithmetic admission,
-consensus flagging); `data/` remains data-only and untracked.
+`packages` and shipped in the wheel). `gt/` holds both the tracked ground truth
+machinery and the code that gates it (schema validation, arithmetic admission,
+consensus flagging); the documents themselves live under `dataset/`, where the
+annotations are tracked and the filings are not.
 
 Upstream's package name and import paths are deliberately left alone so that
 upstream changes can still be merged. The harness itself is modified in exactly
