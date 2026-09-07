@@ -161,13 +161,48 @@ def script_fidelity(gt_markup: str, raw_pred_markup: str) -> float | None:
     return sum(1 for r in pred_runs if _run_of_script(r) == page_script) / len(pred_runs)
 
 
+def _align_to_pairing(
+    gt_grids: list[list[list[str]]],
+    pred_grids: list[list[list[str]]],
+    pairing: list[tuple[int, int | None]] | None,
+) -> list[list[list[str]]]:
+    """Reorder the prediction's grids onto the ground truth's table order.
+
+    The cell metrics compare ``gt_grids[i]`` against ``pred_grids[i]``, which is
+    only meaningful once ``i`` means the same table on both sides. It does not
+    by default: ``extract_table_pairs`` returns the two sides as they were
+    parsed, in document order and of different lengths, and it is GriTS that
+    matches them -- a Hungarian assignment over pairwise ``grits_con``, exposed
+    as its ``pairing`` metadata.
+
+    Without this step a prediction that emits one extra table early offsets
+    every table after it, and each one is scored against its neighbour. That is
+    not a small error: on an 11-page filing where five systems each split or
+    merged a table or two, it drove ``numeric_exact`` to 0.0000 for all of them
+    while 83% of the ground truth's figures were present verbatim in their
+    output.
+
+    A ground-truth table GriTS could not match becomes an empty grid rather
+    than a borrowed one: nothing was predicted for it, and that is a miss.
+    """
+    if not pairing:
+        return pred_grids  # nothing matched; index order is all there is
+    aligned: list[list[list[str]]] = [[] for _ in gt_grids]
+    for gt_index, pred_index in pairing:
+        if gt_index < len(aligned) and pred_index is not None and pred_index < len(pred_grids):
+            aligned[gt_index] = pred_grids[pred_index]
+    return aligned
+
+
 def _grids(expected: str, actual: str) -> tuple[list[list[list[str]]], list[list[list[str]]]]:
     """Cell grids for both sides, from the same stage the table metrics use.
 
     Going through ``extract_table_pairs`` rather than parsing separately means
     coverage and numeric exactness see exactly the tables GriTS and TRM saw --
     a disagreement between the cell metrics and the table metrics would
-    otherwise be unattributable.
+    otherwise be unattributable. Seeing the same tables is necessary but not
+    sufficient: they must also be paired the same way, which
+    :func:`_align_to_pairing` does with GriTS's own assignment.
     """
     from extract_bench.evaluation.metrics.parse.table_extraction import (  # type: ignore[import-untyped]
         extract_table_pairs,
@@ -218,12 +253,20 @@ def score_document(
 
     evaluator = evaluator or ParseEvaluator()
 
-    def run_pass(expected: str, actual: str) -> dict[str, float]:
+    def run_pass(expected: str, actual: str) -> tuple[dict[str, float], list]:
         # Mirror the evaluator's own pre-step so the raw pass reproduces the
         # harness's published numbers rather than a near-miss of them.
         actual = merge_preceding_titles_into_tables(expected, actual)
         values = evaluator._compute_table_similarity_metrics(expected, actual)
-        return {m.metric_name: m.value for m in values}
+        return {m.metric_name: m.value for m in values}, values
+
+    def table_pairing(values: list) -> list[tuple[int, int | None]] | None:
+        """GriTS's ground-truth-to-prediction table assignment, if it ran."""
+        for metric in values:
+            pairing = (getattr(metric, "metadata", None) or {}).get("pairing")
+            if pairing:
+                return [(int(g), None if p is None else int(p)) for g, p in pairing]
+        return None
 
     # Text tier — both sides, same rules, same call site.
     text_expected, gt_text_fired = canonicalize_markup_traced(expected_markup, fold_letters=fold_letters)
@@ -233,16 +276,23 @@ def score_document(
     struct_expected, gt_tables, gt_struct_fired = canonicalize_structure(text_expected)
     struct_actual, pred_tables, pred_struct_fired = canonicalize_structure(text_actual)
 
-    passes = {
-        "raw": run_pass(expected_markup, actual_markup),
-        "text": run_pass(text_expected, text_actual),
-        "struct": run_pass(struct_expected, struct_actual),
-    }
+    raw_pass, _ = run_pass(expected_markup, actual_markup)
+    text_pass, _ = run_pass(text_expected, text_actual)
+    struct_pass, struct_values = run_pass(struct_expected, struct_actual)
+    passes = {"raw": raw_pass, "text": text_pass, "struct": struct_pass}
 
     # Cell metrics on the struct-canonical grids: column order and section
     # rows are already reconciled there, so a "missing" cell is missing rather
     # than merely somewhere else.
-    gt_grids, pred_grids = _grids(struct_expected, struct_actual)
+    #
+    # The prediction is re-parsed through the evaluator's own title-merge
+    # pre-step, because that is the text GriTS indexed when it built the
+    # pairing; parsing the unmerged markup would number the tables differently
+    # and the pairing would point at the wrong ones.
+    gt_grids, pred_grids = _grids(
+        struct_expected, merge_preceding_titles_into_tables(struct_expected, struct_actual)
+    )
+    pred_grids = _align_to_pairing(gt_grids, pred_grids, table_pairing(struct_values))
 
     return DocumentScore(
         passes=passes,

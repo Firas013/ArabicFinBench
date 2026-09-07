@@ -16,8 +16,9 @@ code happened to be doing when someone asked to see it.
 
 Usage::
 
-    python scripts/afb_results.py --record --pipeline llamaparse_agentic ...
-    python scripts/afb_results.py                      # show the table
+    python scripts/afb_results.py --record --pipeline llamaparse_agentic \
+        --input-dir dataset/test_4
+    python scripts/afb_results.py --input-dir dataset/test_4   # show that table
 """
 
 from __future__ import annotations
@@ -31,7 +32,25 @@ from pathlib import Path
 from arabicfinbench.canon.version import CANON_VERSION
 from arabicfinbench.results import STORE, StoredScore, append, from_document_score, latest
 
-DOCUMENT = "test_1/Test_1"
+DEFAULT_INPUT_DIR = Path("dataset/test_1")
+
+
+def document_id(input_dir: Path) -> str:
+    """The store key for the document in ``input_dir``.
+
+    The harness derives a test id as ``<containing directory>/<pdf stem>``, so
+    the same document keeps one identity whether it is addressed as ``test_4``
+    or ``dataset/test_4``. Deriving it here rather than pinning a constant is
+    what lets one invocation render one document's table without the id and the
+    input directory drifting apart.
+    """
+    pdfs = sorted(input_dir.glob("*.pdf"))
+    if len(pdfs) != 1:
+        raise SystemExit(
+            f"{input_dir}: expected exactly one PDF to name the document, found {len(pdfs)}. "
+            f"Pass --document explicitly."
+        )
+    return f"{input_dir.name}/{pdfs[0].stem}"
 
 
 def _facts(pipeline: str, output_root: Path) -> tuple[float | None, float | None]:
@@ -137,11 +156,15 @@ def _display_name(system: str) -> str:
     return system
 
 
-def show(entries: list[StoredScore], *, hidden: list[StoredScore] | None = None) -> str:
+def show(
+    entries: list[StoredScore], *, document: str, hidden: list[StoredScore] | None = None
+) -> str:
     ranked = [e for e in entries if e.status != "failed"]
     ranked = sorted(ranked, key=lambda e: -(e.passes.get("struct", {}).get("table_record_match") or 0))
-    canon = {e.canon_version for e in entries}
-    out = [f"\n# ArabicFinBench — {DOCUMENT}  (canon {', '.join(sorted(canon))})\n"]
+    # With no entries yet there is no stamp to report, so name the canon the
+    # table would be rendered under rather than printing an empty "(canon )".
+    canon = {e.canon_version for e in entries} or {CANON_VERSION}
+    out = [f"\n# ArabicFinBench — {document}  (canon {', '.join(sorted(canon))})\n"]
     out.append(
         "**What each column means: [docs/metrics.md](metrics.md).** In short — "
         "`struct` is the score, `raw` is what an unnormalised leaderboard would "
@@ -224,7 +247,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--record", action="store_true", help="score and append to the store")
     ap.add_argument("--pipeline", action="append", default=[], help="pipeline to record (repeatable)")
-    ap.add_argument("--input-dir", type=Path, default=Path("test_1"))
+    ap.add_argument("--input-dir", type=Path, default=DEFAULT_INPUT_DIR)
+    ap.add_argument(
+        "--document",
+        default=None,
+        help="store key of the document to render (default: derived from --input-dir)",
+    )
     ap.add_argument("--output-root", type=Path, default=Path("output"))
     ap.add_argument("--out", type=Path, default=None, help="also write the rendered table here")
     ap.add_argument(
@@ -236,6 +264,7 @@ def main() -> int:
         ),
     )
     args = ap.parse_args()
+    document = args.document or document_id(args.input_dir)
 
     if args.record:
         if not args.pipeline:
@@ -245,15 +274,15 @@ def main() -> int:
         append(entries)
         print(f"appended {len(entries)} entrie(s) to {STORE}")
 
-    entries = latest(document=DOCUMENT, canon_version=CANON_VERSION)
+    entries = latest(document=document, canon_version=CANON_VERSION)
     # Failures are not hidden — they get their own section. Only unverifiable
     # console exports are withheld, and only from the leaderboard view.
     hidden = [e for e in entries if e.status in ("hand-imported", "externally-reported")]
     if not args.include_hand_imported:
         entries = [e for e in entries if e.status not in ("hand-imported", "externally-reported")]
-        table = show(entries, hidden=hidden)
+        table = show(entries, document=document, hidden=hidden)
     else:
-        table = show(entries)
+        table = show(entries, document=document)
     print(table)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

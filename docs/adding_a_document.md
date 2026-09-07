@@ -118,19 +118,21 @@ The conventional dash `-` (nil, printed) is fine and is treated as null.
 
 ```bash
 # 1. GT -> harness sidecar + expected_markdown
-python scripts/afb_gt_to_sidecar.py test_2/Test_2.json test_2/Test_2.pdf
+python scripts/afb_gt_to_sidecar.py dataset/test_2/Test_2.json dataset/test_2/Test_2.pdf
 
 # 2. run whatever systems you want
-extract-bench run llamaparse_agentic --input_dir test_2
-python scripts/afb_run_openrouter.py --input-dir test_2      # the VLMs
+extract-bench run llamaparse_agentic --input_dir dataset/test_2
+python scripts/afb_run_openrouter.py --input-dir dataset/test_2   # the VLMs
 
 # 3. score once into the store, then read it as often as you like
-python scripts/afb_results.py --record --pipeline llamaparse_agentic --input-dir test_2
-python scripts/afb_results.py
+python scripts/afb_results.py --record --pipeline llamaparse_agentic --input-dir dataset/test_2
+python scripts/afb_results.py --input-dir dataset/test_2
 ```
 
-`afb_results.py` currently pins `DOCUMENT = "test_1/Test_1"`; point it at the
-new id to render that document's table.
+`afb_results.py` derives the store key from `--input-dir` — the harness names a
+test case `<containing directory>/<pdf stem>`, so `dataset/test_2` renders
+`test_2/Test_2`. `--document` overrides it when a directory holds more than one
+PDF.
 
 ---
 

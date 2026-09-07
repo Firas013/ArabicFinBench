@@ -240,6 +240,7 @@ arabicfinbench/data/*
 # permanent. Enforced by scripts/hooks/pre-commit and CI.
 # See arabicfinbench/gt/CONVENTIONS.md section 6.
 test_1/
+dataset/
 fixtures_local/
 
 # Scored-results store. Upstream ignores "results/" as run scratch; ours is the
