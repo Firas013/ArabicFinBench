@@ -66,17 +66,23 @@ class TestRaggedTablesAreOrdered:
         assert score.numeric is not None
         assert score.numeric.value_exact_match > 0.5
 
-    def test_colspan_is_still_refused_and_says_so(self) -> None:
-        # Padding fixes width, not spans: a permutation over merged cells is
-        # still ill-defined and must be declined out loud.
+    def test_colspans_are_expanded_rather_than_refused(self) -> None:
+        """Superseded by canon 0.8.0; this asserted that colspans were refused.
+
+        Refusing had the same asymmetry as refusing ragged rows -- it fired on
+        the colspan-free ground truth and skipped the prediction -- so a span is
+        now expanded into the grid positions it occupies instead.
+        """
         spanned = (
             "<table>"
             "<tr><td colspan='2'>الموجودات المتداولة</td><td>٢٠٢٤ م</td></tr>"
             "<tr><td>٨٣٩</td><td>٨٦٦</td><td>نقد</td></tr>"
             "</table>"
         )
-        _, report = canonicalize_table_structure(spanned)
-        assert report.column_order_skipped == "colspan"
+        out, report = canonicalize_table_structure(spanned)
+        assert report.column_order_skipped is None
+        assert report.expanded_spans == 1
+        assert "colspan" not in out
 
 
 class TestEmptyPredictionCannotRankAsAMeasurement:

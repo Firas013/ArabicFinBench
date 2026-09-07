@@ -134,9 +134,16 @@ class TestColumnOrderRefusesToGuess:
         # Every row leaves rectangular: the cell metrics read this grid.
         assert out.count("<td") == out.count("<tr") * 3
 
-    def test_residual_colspans_are_skipped_with_a_named_reason(self) -> None:
-        # A colspan that is not a section (two non-empty cells) survives the
-        # section strip; permuting around it would corrupt the grid.
+    def test_residual_colspans_are_expanded_not_skipped(self) -> None:
+        """Superseded by canon 0.8.0; this test previously asserted a skip.
+
+        Refusing here had the same shape as refusing on ragged rows: the rule
+        still fired on the colspan-free ground truth, so the two sides ended up
+        in different column frames and the difference was charged to the model.
+        A span is expanded into the grid positions it occupies -- text in the
+        first, the rest empty -- which is how a spanning header reads as a grid
+        and makes the permutation well defined.
+        """
         spanned = (
             "<table>"
             '<tr><td colspan="2">أ ب</td><td>ج</td><td>د</td></tr>'
@@ -145,8 +152,21 @@ class TestColumnOrderRefusesToGuess:
             "</table>"
         )
         out, report = canonicalize_table_structure(spanned)
-        assert out == spanned
-        assert report.column_order_skipped == "colspan"
+        assert report.column_order_skipped is None
+        assert report.expanded_spans == 1
+        assert report.column_permutation is not None
+        # The span is gone and every row is the table's full width.
+        assert "colspan" not in out
+        assert out.count("<td") == out.count("<tr") * 4
+
+    def test_a_table_too_small_to_order_is_still_declined_by_name(self) -> None:
+        # Expansion and padding make a permutation *definable*; they do not make
+        # one *meaningful* on a table with a single row or column. That case is
+        # still refused, and still says why.
+        tiny = "<table><tr><td>نقد</td><td>٨٣٩</td></tr></table>"
+        out, report = canonicalize_table_structure(tiny)
+        assert out == tiny
+        assert report.column_order_skipped == "too-small"
 
 
 class TestStructureFiringNames:

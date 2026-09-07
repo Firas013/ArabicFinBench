@@ -44,6 +44,9 @@ _ROW_RE = re.compile(r"<tr\b[^>]*>.*?</tr>", re.S | re.I)
 _ROW_OPEN_RE = re.compile(r"<tr\b[^>]*>", re.I)
 _CELL_RE = re.compile(r"<(t[dh])\b([^>]*)>(.*?)</\1\s*>", re.S | re.I)
 _COLSPAN_RE = re.compile(r"\bcolspan\s*=\s*[\"']?(\d+)", re.I)
+# Strips the attribute itself once a span has been expanded into real cells, so
+# the emitted width and the declared width cannot disagree.
+_COLSPAN_ATTR_RE = re.compile(r"\s*\bcolspan\s*=\s*(\"[^\"]*\"|'[^']*'|\d+)", re.I)
 _TAG_RE = re.compile(r"<[^>]*>")
 
 # A canonical cell is numeric when it is a value, a note reference, or the
@@ -101,6 +104,7 @@ class TableReport:
     column_permutation: tuple[int, ...] | None = None
     column_order_skipped: str | None = None
     padded_rows: int = 0  # short rows filled to the table's width before ordering
+    expanded_spans: int = 0  # rows whose colspans were expanded into real cells
 
     @property
     def sections_removed(self) -> int:
@@ -291,33 +295,65 @@ def normalize_table_columns(table_html: str, report: TableReport) -> tuple[str, 
         return table_html, report
 
     parsed = [_cells(m.group(0)) for m in row_matches]
+    cell_html = [[c.group(0) for c in _CELL_RE.finditer(m.group(0))] for m in row_matches]
+
+    # Expand a span into the grid positions it occupies. Left merged, a
+    # colspan=n cell made the row narrower than the table, the permutation was
+    # ill-defined, and the whole table was refused -- while the same rule still
+    # fired on the colspan-free ground truth, leaving the two sides in different
+    # column frames. On the SADAFCO filing that refused five of nine tables for
+    # one system, whose digit exactness read 0.0986 where its own output,
+    # mirrored, gave 0.50.
+    #
+    # The first position keeps the text and the rest are empty, which is how a
+    # spanning header reads as a grid: the label belongs to the first column it
+    # covers, and the others carry no separate value of their own.
+    spanned = sum(1 for cells in parsed if any(c.colspan > 1 for c in cells))
+    if spanned:
+        expanded_cells: list[list[_Cell]] = []
+        expanded_html: list[list[str]] = []
+        for cells, htmls in zip(parsed, cell_html, strict=False):
+            row_cells: list[_Cell] = []
+            row_html: list[str] = []
+            for index, cell in enumerate(cells):
+                row_cells.append(_Cell(text=cell.text, colspan=1))
+                original = htmls[index] if index < len(htmls) else "<td></td>"
+                row_html.append(_COLSPAN_ATTR_RE.sub("", original))
+                for _ in range(max(1, cell.colspan) - 1):
+                    row_cells.append(_Cell(text="", colspan=1))
+                    row_html.append("<td></td>")
+            expanded_cells.append(row_cells)
+            expanded_html.append(row_html)
+        parsed, cell_html = expanded_cells, expanded_html
+        report = replace(report, expanded_spans=spanned)
+
     widths = {len(cells) for cells in parsed}
     if len(widths) > 1:
         width = max(widths)
         short = sum(1 for cells in parsed if len(cells) < width)
         parsed = [cells + [_Cell(text="", colspan=1)] * (width - len(cells)) for cells in parsed]
         report = replace(report, padded_rows=short)
-    if any(c.colspan > 1 for cells in parsed for c in cells):
-        return table_html, replace(report, column_order_skipped="colspan")
 
     order = canonical_column_order(parsed)
     if order is None:
         return table_html, replace(report, column_order_skipped="too-small")
     report = replace(report, label_column=order[0], column_permutation=order)
-    # Padding has to reach the markup even when the order is already canonical:
-    # the cell metrics read the emitted grid, and a row left short there is an
-    # uncovered cell rather than an empty one.
-    if order == tuple(range(len(order))) and not report.padded_rows:
+    # Padding and span expansion have to reach the markup even when the order is
+    # already canonical: the cell metrics read the emitted grid, and a row left
+    # short there is an uncovered cell rather than an empty one.
+    if order == tuple(range(len(order))) and not report.padded_rows and not report.expanded_spans:
         return table_html, report
 
     pieces: list[str] = []
     cursor = 0
-    for m in row_matches:
-        row_html = m.group(0)
-        cell_matches = list(_CELL_RE.finditer(row_html))
-        open_tag = _ROW_OPEN_RE.match(row_html)
+    # cell_html carries the expansion, so a spanned row emits the columns it
+    # actually occupies; rows are rebuilt from it rather than from the original
+    # match, and every other cell keeps its markup verbatim.
+    for row_index, m in enumerate(row_matches):
+        open_tag = _ROW_OPEN_RE.match(m.group(0))
         assert open_tag is not None  # _ROW_RE guarantees the row opens with <tr
-        cells_out = [cell_matches[i].group(0) if i < len(cell_matches) else "<td></td>" for i in order]
+        htmls = cell_html[row_index] if row_index < len(cell_html) else []
+        cells_out = [htmls[i] if i < len(htmls) else "<td></td>" for i in order]
         rebuilt = open_tag.group(0) + "".join(cells_out) + "</tr>"
         pieces.append(table_html[cursor : m.start()])
         pieces.append(rebuilt)

@@ -165,10 +165,68 @@ def script_fidelity(gt_markup: str, raw_pred_markup: str) -> float | None:
     return sum(1 for r in pred_runs if _run_of_script(r) == page_script) / len(pred_runs)
 
 
+@dataclass(frozen=True)
+class TableAlignment:
+    """How GriTS matched one ground-truth table to the prediction.
+
+    ``pred_index`` is the prediction table it paired with, and ``rows``/``cols``
+    map a ground-truth index to the prediction index GriTS aligned it against.
+    An index absent from a map is one GriTS could not align: the prediction has
+    nothing standing in that position.
+    """
+
+    pred_index: int | None
+    rows: dict[int, int]
+    cols: dict[int, int]
+
+
+def _align_grid(
+    gt_grid: list[list[str]],
+    pred_grid: list[list[str]],
+    alignment: TableAlignment | None,
+) -> list[list[str]]:
+    """Rebuild one prediction grid in the ground truth's row and column order.
+
+    Positional comparison assumes ``(row, col)`` means the same cell on both
+    sides. Inside a paired table it often does not: a prediction that emits one
+    extra header row, or splits a row in two, shifts every row beneath it, and
+    each ground-truth row is then scored against its neighbour. That is the same
+    defect as unpaired tables, one level down, and it corrupts E and F together
+    -- a relation reads the row below its total and reports an unevaluable
+    figure rather than a wrong sum.
+
+    GriTS already solves this alignment to compute its own score and publishes
+    it as ``_con_row_alignment``/``_con_col_alignment``. Reusing it, rather than
+    inventing a second row matcher, is what keeps the cell metrics and the table
+    metrics from disagreeing about which row is which.
+
+    A ground-truth position GriTS could not align becomes empty rather than
+    borrowing whatever sat at that index: nothing was predicted there, and that
+    is a miss.
+    """
+    if alignment is None or (not alignment.rows and not alignment.cols):
+        return pred_grid  # nothing to go on; index order is all there is
+    width = max((len(r) for r in gt_grid), default=0)
+    out: list[list[str]] = []
+    for gt_row in range(len(gt_grid)):
+        source_row = alignment.rows.get(gt_row)
+        row: list[str] = []
+        for gt_col in range(width):
+            source_col = alignment.cols.get(gt_col, gt_col)
+            value = ""
+            if source_row is not None and source_row < len(pred_grid):
+                pred_row = pred_grid[source_row]
+                if source_col is not None and source_col < len(pred_row):
+                    value = pred_row[source_col]
+            row.append(value)
+        out.append(row)
+    return out
+
+
 def _align_to_pairing(
     gt_grids: list[list[list[str]]],
     pred_grids: list[list[list[str]]],
-    pairing: list[tuple[int, int | None]] | None,
+    alignments: list[TableAlignment | None] | None,
 ) -> list[list[list[str]]]:
     """Reorder the prediction's grids onto the ground truth's table order.
 
@@ -187,14 +245,20 @@ def _align_to_pairing(
     output.
 
     A ground-truth table GriTS could not match becomes an empty grid rather
-    than a borrowed one: nothing was predicted for it, and that is a miss.
+    than a borrowed one: nothing was predicted for it, and that is a miss. Rows
+    and columns within a matched table are then aligned the same way, by
+    :func:`_align_grid`.
     """
-    if not pairing:
+    if not alignments:
         return pred_grids  # nothing matched; index order is all there is
     aligned: list[list[list[str]]] = [[] for _ in gt_grids]
-    for gt_index, pred_index in pairing:
-        if gt_index < len(aligned) and pred_index is not None and pred_index < len(pred_grids):
-            aligned[gt_index] = pred_grids[pred_index]
+    for gt_index, alignment in enumerate(alignments):
+        if gt_index >= len(aligned) or alignment is None:
+            continue
+        pred_index = alignment.pred_index
+        if pred_index is None or pred_index >= len(pred_grids):
+            continue
+        aligned[gt_index] = _align_grid(gt_grids[gt_index], pred_grids[pred_index], alignment)
     return aligned
 
 
@@ -265,12 +329,32 @@ def score_document(
         values = evaluator._compute_table_similarity_metrics(expected, actual)
         return {m.metric_name: m.value for m in values}, values
 
-    def table_pairing(values: list) -> list[tuple[int, int | None]] | None:
-        """GriTS's ground-truth-to-prediction table assignment, if it ran."""
+    def table_alignments(values: list) -> list[TableAlignment | None] | None:
+        """GriTS's full correspondence: which table, and which rows and columns.
+
+        ``per_table_details`` carries one entry per ground-truth table with the
+        prediction table it matched and the row/column maps that matching
+        produced. Taking all three from the same source is the point: a second
+        matcher of our own could disagree with the score it is meant to explain.
+        """
         for metric in values:
-            pairing = (getattr(metric, "metadata", None) or {}).get("pairing")
-            if pairing:
-                return [(int(g), None if p is None else int(p)) for g, p in pairing]
+            metadata = getattr(metric, "metadata", None) or {}
+            details = metadata.get("per_table_details")
+            if not details:
+                continue
+            by_gt: dict[int, TableAlignment] = {}
+            for entry in details:
+                gt_index = entry.get("gt_table_index")
+                if gt_index is None:
+                    continue
+                pred_index = entry.get("pred_table_index")
+                by_gt[int(gt_index)] = TableAlignment(
+                    pred_index=None if pred_index is None else int(pred_index),
+                    rows={int(k): int(v) for k, v in (entry.get("_con_row_alignment") or {}).items()},
+                    cols={int(k): int(v) for k, v in (entry.get("_con_col_alignment") or {}).items()},
+                )
+            if by_gt:
+                return [by_gt.get(i) for i in range(max(by_gt) + 1)]
         return None
 
     # Text tier — both sides, same rules, same call site.
@@ -295,7 +379,7 @@ def score_document(
     # pairing; parsing the unmerged markup would number the tables differently
     # and the pairing would point at the wrong ones.
     gt_grids, pred_grids = _grids(struct_expected, merge_preceding_titles_into_tables(struct_expected, struct_actual))
-    pred_grids = _align_to_pairing(gt_grids, pred_grids, table_pairing(struct_values))
+    pred_grids = _align_to_pairing(gt_grids, pred_grids, table_alignments(struct_values))
 
     # F. Relations are authored in ground-truth coordinates, so they are mapped
     # onto the canonical grid the metrics use; the prediction is then read at

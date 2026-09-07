@@ -75,14 +75,26 @@ def map_table(table_html: str) -> TableMap:
 
     cols = {c: c for c in range(n_cols)}
     if kept:
+        # Same order as normalize_table_columns: expand spans, then pad, then
+        # order. Ground truth is authored as a rectangular matrix with no spans,
+        # so the expansion is a no-op there -- but this function's job is to
+        # reproduce the transform, not to assume which branch it takes.
+        if any(c.colspan > 1 for cells in kept for c in cells):
+            kept = [
+                [
+                    _Cell(text=cell.text if offset == 0 else "", colspan=1)
+                    for cell in cells
+                    for offset in range(max(1, cell.colspan))
+                ]
+                for cells in kept
+            ]
         widths = {len(cells) for cells in kept}
         if len(widths) > 1:  # the padding normalize_table_columns applies
             width = max(widths)
             kept = [c + [_Cell(text="", colspan=1)] * (width - len(c)) for c in kept]
-        if not any(c.colspan > 1 for cells in kept for c in cells):
-            order = canonical_column_order(kept)
-            if order is not None:
-                cols = {raw: canonical for canonical, raw in enumerate(order)}
+        order = canonical_column_order(kept)
+        if order is not None:
+            cols = {raw: canonical for canonical, raw in enumerate(order)}
     return TableMap(rows=rows, cols=cols)
 
 

@@ -1,5 +1,5 @@
 
-# ArabicFinBench — test_5/Test_5  (canon 0.7.0)
+# ArabicFinBench — test_5/Test_5  (canon 0.8.0)
 
 **What each column means: [docs/metrics.md](metrics.md).** In short — `struct` is the score, `raw` is what an unnormalised leaderboard would show, and the gap between them is convention rather than reading quality.
 
@@ -9,11 +9,11 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | qwen3.8-27b | 0.3559 | 0.4638 | **0.7243** | 0.8786 | 0.3684 | 9/9 | api |
 | gemini-3.5-flash-lite | 0.2775 | 0.3434 | **0.6767** | 0.7110 | 0.3993 | 9/11 | api |
-| qwen3.7-flash | 0.4495 | 0.5552 | **0.4615** | 0.6864 | 0.0120 | 9/10 | api |
+| qwen3.7-flash | 0.4495 | 0.5552 | **0.5593** | 0.7307 | 0.1097 | 9/10 | api |
+| llamaparse_agentic_plus | 0.2585 | 0.3705 | **0.4894** | 0.6045 | 0.2309 | 9/9 | api |
 | mistral_ocr_4 | 0.3600 | 0.4339 | **0.4365** | 0.6058 | 0.0765 | 9/10 | api |
-| llamaparse_agentic_plus | 0.2585 | 0.3705 | **0.4044** | 0.5763 | 0.1459 | 9/9 | api |
 | feras_model | 0.0865 | 0.1325 | **0.3233** | 0.5750 | 0.2369 | 9/9 | hand-imported |
-| llamaparse_agentic | 0.3412 | 0.3951 | **0.3175** | 0.4580 | -0.0237 | 9/9 | api |
+| llamaparse_agentic | 0.3412 | 0.3951 | **0.2780** | 0.4845 | -0.0632 | 9/9 | api |
 | gpt-5-mini | 0.0866 | 0.0890 | **0.2190** | 0.3405 | 0.1324 | 6/6 | api |
 | mistral-medium-3.1 | 0.0654 | 0.1350 | **0.1904** | 0.4467 | 0.1250 | 9/17 | api |
 
@@ -21,29 +21,29 @@
 
 | system | coverage | numeric exact | digit CER | null acc | fabricated | dropped | judged |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| qwen3.8-27b | 0.9493 | 0.7254 | 0.2354 | 0.5912 | 0.3250 | 0.0507 | 137 |
-| gemini-3.5-flash-lite | 0.8955 | 0.2746 | 0.6890 | 0.1290 | 0.8333 | 0.1045 | 155 |
-| qwen3.7-flash | 0.9373 | 0.5141 | 0.4123 | 0.1277 | 0.8500 | 0.0627 | 141 |
-| mistral_ocr_4 | 0.8090 | 0.5775 | 0.4151 | 0.1467 | 0.7750 | 0.1910 | 184 |
-| llamaparse_agentic_plus | 0.9851 | 0.2746 | 0.6919 | 0.0400 | 0.9583 | 0.0149 | 125 |
-| feras_model | 0.6299 | 0.0070 | 1.0399 | 0.3184 | 0.3500 | 0.3731 | 245 |
-| llamaparse_agentic | 0.9791 | 0.0986 | 0.8716 | 0.0315 | 0.9667 | 0.0209 | 127 |
-| gpt-5-mini | 0.4776 | 0.0845 | 0.9173 | 0.3186 | 0.2167 | 0.5224 | 295 |
-| mistral-medium-3.1 | 0.6328 | 0.0704 | 0.8802 | 0.1646 | 0.6667 | 0.3672 | 243 |
+| qwen3.8-27b | 0.9642 | 0.9085 | 0.0428 | 0.6439 | 0.2917 | 0.0358 | 132 |
+| gemini-3.5-flash-lite | 0.9284 | 0.5423 | 0.4579 | 0.2153 | 0.7417 | 0.0716 | 144 |
+| qwen3.7-flash | 0.9642 | 0.8803 | 0.0699 | 0.3561 | 0.6083 | 0.0358 | 132 |
+| llamaparse_agentic_plus | 0.8239 | 0.6690 | 0.2867 | 0.3966 | 0.4083 | 0.1761 | 179 |
+| mistral_ocr_4 | 0.8955 | 0.7676 | 0.2168 | 0.1935 | 0.7500 | 0.1045 | 155 |
+| feras_model | 0.7791 | 0.6127 | 0.4351 | 0.5052 | 0.1833 | 0.2209 | 194 |
+| llamaparse_agentic | 0.8388 | 0.2676 | 0.7047 | 0.3276 | 0.5250 | 0.1612 | 174 |
+| gpt-5-mini | 0.4627 | 0.1549 | 0.8217 | 0.3333 | 0.1667 | 0.5373 | 300 |
+| mistral-medium-3.1 | 0.7343 | 0.2535 | 0.6320 | 0.3732 | 0.3500 | 0.2657 | 209 |
 
 ## Diagnostics
 
 | system | script fidelity | $/page | latency | scored at |
 | --- | --- | --- | --- | --- |
-| qwen3.8-27b | 1.0000 | - | - | 2026-09-07T17:45:08 |
-| gemini-3.5-flash-lite | 1.0000 | - | - | 2026-09-07T17:45:01 |
-| qwen3.7-flash | 1.0000 | - | - | 2026-09-07T17:44:59 |
-| mistral_ocr_4 | 1.0000 | 0.0040 | 2.2s | 2026-09-07T17:45:14 |
-| llamaparse_agentic_plus | 0.9185 | 0.0563 | 53.2s | 2026-09-07T17:45:12 |
-| feras_model | 1.0000 | 0.0000 | - | 2026-09-07T17:48:16 |
-| llamaparse_agentic | 1.0000 | 0.0125 | 54.3s | 2026-09-07T17:45:10 |
-| gpt-5-mini | 1.0000 | - | - | 2026-09-07T17:45:03 |
-| mistral-medium-3.1 | 1.0000 | - | - | 2026-09-07T17:45:06 |
+| qwen3.8-27b | 1.0000 | - | - | 2026-09-07T19:10:48 |
+| gemini-3.5-flash-lite | 1.0000 | - | - | 2026-09-07T19:10:41 |
+| qwen3.7-flash | 1.0000 | - | - | 2026-09-07T19:10:39 |
+| llamaparse_agentic_plus | 0.9185 | 0.0563 | 53.2s | 2026-09-07T19:10:52 |
+| mistral_ocr_4 | 1.0000 | 0.0040 | 2.2s | 2026-09-07T19:10:54 |
+| feras_model | 1.0000 | 0.0000 | - | 2026-09-07T19:13:56 |
+| llamaparse_agentic | 1.0000 | 0.0125 | 54.3s | 2026-09-07T19:10:50 |
+| gpt-5-mini | 1.0000 | - | - | 2026-09-07T19:10:43 |
+| mistral-medium-3.1 | 1.0000 | - | - | 2026-09-07T19:10:45 |
 
 ## F — arithmetic consistency
 
@@ -51,15 +51,15 @@ Does the system's *own* output add up? 19 identities are declared for this docum
 
 | system | F | F (evaluable) | reconciling | evaluable | declared |
 | --- | --- | --- | --- | --- | --- |
-| feras_model | **0.5263** | 0.7143 | 10 | 14 | 19 |
-| qwen3.7-flash | **0.2105** | 1.0000 | 4 | 4 | 19 |
-| llamaparse_agentic_plus | **0.2105** | 1.0000 | 4 | 4 | 19 |
-| qwen3.8-27b | **0.1053** | 1.0000 | 2 | 2 | 19 |
-| mistral_ocr_4 | **0.0526** | 1.0000 | 1 | 1 | 19 |
-| llamaparse_agentic | **0.0526** | 0.2500 | 1 | 4 | 19 |
-| gemini-3.5-flash-lite | **0.0000** | 0.0000 | 0 | 7 | 19 |
-| gpt-5-mini | **0.0000** | - | 0 | 0 | 19 |
-| mistral-medium-3.1 | **0.0000** | - | 0 | 0 | 19 |
+| feras_model | **1.0000** | 1.0000 | 19 | 19 | 19 |
+| gpt-5-mini | **1.0000** | 1.0000 | 19 | 19 | 19 |
+| mistral_ocr_4 | **0.5789** | 0.8462 | 11 | 13 | 19 |
+| llamaparse_agentic_plus | **0.3684** | 1.0000 | 7 | 7 | 19 |
+| qwen3.7-flash | **0.3158** | 0.8571 | 6 | 7 | 19 |
+| mistral-medium-3.1 | **0.3158** | 0.3158 | 6 | 19 | 19 |
+| llamaparse_agentic | **0.2105** | 0.3636 | 4 | 11 | 19 |
+| qwen3.8-27b | **0.1579** | 1.0000 | 3 | 3 | 19 |
+| gemini-3.5-flash-lite | **0.1053** | 0.2000 | 2 | 10 | 19 |
 
 *P, E and F are reported separately and never combined. A system that parses cleanly and computes wrongly is not partially correct — it produces confident, well-formed, wrong financial figures.*
 

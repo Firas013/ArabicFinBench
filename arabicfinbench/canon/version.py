@@ -5,7 +5,13 @@ scored under different canon versions are not comparable, and the stamp is what
 makes that checkable instead of remembered.
 """
 
-CANON_VERSION = "0.7.0"
+CANON_VERSION = "0.8.0"
+# 0.8.0 - rows and columns inside a paired table are aligned with GriTS's own
+#         maps instead of read off by position, and colspans are expanded into
+#         the grid positions they occupy instead of refusing the table. Both
+#         were the same asymmetry seen at different depths: a rule that fired on
+#         the ground truth and declined on the prediction, charging the
+#         difference to the model.
 # 0.7.0 - column ordering pads short rows to the table's width instead of
 #         declining on ragged input. Declining fired the rule on a rectangular
 #         ground truth and skipped a prediction with one uneven row, leaving the

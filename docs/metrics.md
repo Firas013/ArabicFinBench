@@ -189,11 +189,14 @@ those from the denominator would give the highest F to a system that outputs
 nothing. `F (evaluable)` is reported beside `F` to separate computing badly from
 extracting sparsely.
 
-**Known limitation.** F reads a system's figures at canonical grid positions,
-and row alignment inside a paired table is still positional. A system whose
-table has a different row count can be read one row off, which shows up as an
-unevaluable relation rather than a wrong sum. Prefer `F (evaluable)` and the
-counts over the bare rate until that is fixed.
+**How a figure is located.** F reads a system's values at canonical grid
+positions, and those positions are matched to the prediction using GriTS's own
+table, row and column alignment — the same correspondence the P table metrics
+are computed from. Aligning by content rather than by index is what stops a
+system being charged for emitting one extra header row; it does not soften the
+comparison, because alignment decides *which* cells are compared and the values
+in them are still judged exactly. A prediction with every digit shifted by one
+scores `numeric_exact` 0.0000 and F 0.0625 on test_1.
 
 ## What is not here
 

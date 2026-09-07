@@ -21,11 +21,13 @@ fork of [ExtractBench](https://github.com/run-llama/ExtractBench).
 > stored prediction, but the documents cannot yet be re-run from scratch by
 > someone else. Fixing that is the main work remaining.
 >
-> **The E axis is young.** Three defects in it were found and fixed recently
-> (table pairing, ragged-column asymmetry, empty predictions ranked as
-> measurements); one known issue remains — row alignment inside a paired table
-> is positional, which can depress both E and F. Read the P columns with
-> confidence, E and F with the caveat.
+> **The E axis is young.** Five defects in it were found and fixed in quick
+> succession — table pairing, row and column alignment inside a paired table,
+> ragged-column asymmetry, colspan refusal, and empty predictions being ranked
+> as measurements. Each was a case of the same rule firing on the ground truth
+> and declining on the prediction, and each is now regression-tested. The
+> numbers are current as of canon 0.8.0; that they moved this much this recently
+> is itself worth knowing when reading them.
 
 ## Provenance
 

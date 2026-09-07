@@ -24,11 +24,21 @@ principle, each now fixed and regression-tested:
 - **Empty predictions ranked as measurements.** A system returning nothing was
   stored as a normal row scoring 0.0000, which reads as "transcribes nothing
   correctly" rather than "returned nothing". Now forced to `failed`.
+- **Rows and columns read off by index.** Table pairing was fixed first, but
+  inside a paired table the cell metrics still assumed row *i* meant the same
+  row on both sides. One extra header row shifted everything beneath it. Now
+  aligned with GriTS's own row and column maps.
+- **Colspans refusing the table.** Column ordering declined on any residual
+  span, which — like the ragged case — fired on the colspan-free ground truth
+  and skipped the prediction. Spans are now expanded into the grid positions
+  they occupy.
 
-One known breach remains open: row alignment inside a paired table is still
-positional, which can depress E and F for a system whose table has a different
-row count. It is stated in `docs/metrics.md` rather than left for a reader to
-discover.
+The last two were the same asymmetry as the ragged-row case, at different
+depths, and correcting them moved the E and F axes substantially: digit error
+fell by 0.33 on average across 41 of 43 rows, and arithmetic consistency rose by
+0.47 across 29. The P table metrics barely moved (9 of 43, +0.03), which is the
+expected signature — they always did their own alignment; it was the cell
+metrics that were reading the wrong cells.
 
 ## 1. Symmetric canonicalisation — `arabicfinbench/canon/`, `arabicfinbench/scoring.py`
 
