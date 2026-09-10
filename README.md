@@ -148,7 +148,6 @@ arabicfinbench/
   provenance.py           # leaderboard row requirements + page-image hashing
   determinism.py          # determinism classes and seed policy
   leaderboard.py          # the generator and its refusals
-  concepts/               # financial concept definitions (stub)
   dimensions/             # the scored dimensions
     cells.py              #   E: coverage, numeric exactness
     nulls.py              #   E: null correctness
@@ -208,9 +207,9 @@ Apache-2.0, inherited from ExtractBench. See [LICENSE](LICENSE) and
 
 ## Note on upstream tooling
 
-`scripts/update_readme.py` regenerates leaderboard tables from a root
-`leaderboard.csv`. ArabicFinBench has no leaderboard yet, and upstream's CSV was
-moved to `docs/upstream_leaderboard.csv` to keep ExtractBench numbers from being
-read as ArabicFinBench results. That script will therefore error until it is
-rewired; this is intentional and preferable to it silently publishing the wrong
-numbers.
+Upstream's `update_readme.py` regenerated README leaderboard tables from a root
+`leaderboard.csv` that this fork does not have, and errored. It has been removed
+rather than left to look broken: `scripts/afb_results.py` renders one document's
+table and `scripts/afb_matrix.py` renders the corpus, both from the stored
+measurements. Upstream's own CSV is kept at `docs/upstream_leaderboard.csv` for
+provenance, labelled so its numbers cannot be read as ArabicFinBench results.

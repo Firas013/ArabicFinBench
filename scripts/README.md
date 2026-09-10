@@ -36,6 +36,11 @@ them would break every recorded command for no gain.
 | --- | --- |
 | `install-hooks.sh` | points `core.hooksPath` at the tracked `hooks/`, so hook changes reach everyone on their next pull. |
 | `hooks/pre-commit` | refuses to commit a corpus document. CI enforces the same rule, so skipping the hook does not get one merged. |
-| `bench_table_metrics.py` | upstream: measures the previous vs. proposed table-metric implementations. |
-| `clean_zone_identifiers.py` | deletes the `:Zone.Identifier` files Windows leaves beside anything copied into WSL. Not benchmark tooling; kept because the corpus is edited from Windows and they accumulate. |
-| `update_readme.py` | **upstream, currently non-functional.** It regenerates leaderboard tables from a root `leaderboard.csv` that ArabicFinBench does not have; upstream's was moved to `docs/upstream_leaderboard.csv` so its numbers could not be read as ours. It errors rather than publishing the wrong table, which is the intended behaviour until it is rewired. |
+
+Nothing else lives here. Three upstream or incidental scripts were removed
+rather than left to be mistaken for part of the benchmark: `update_readme.py`
+(regenerated leaderboard tables from a root `leaderboard.csv` this fork does not
+have, and errored), `bench_table_metrics.py` (an upstream one-off comparing
+table-metric implementations), and `clean_zone_identifiers.py` (a Windows/WSL
+housekeeping utility). `afb_matrix.py` and `afb_results.py` render every table
+this benchmark publishes.
