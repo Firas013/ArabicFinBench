@@ -22,16 +22,27 @@ DOCS='\.(pdf|docx|jfif)$'
 IMAGES='\.(png|jpe?g)$'
 IMAGE_ALLOW='^(docs/|\.github/)'
 
+# Confidential corpora. Here the GROUND TRUTH is the disclosure, not just the
+# filing: Test_6.json/.md reproduce the document's text and every table cell, so
+# an extension rule does not catch them. Checked on additions AND modifications,
+# because a modification to an already-tracked copy publishes it just as well.
+# DELETIONS are excluded (diff-filter has no D): removing a confidential file is
+# the fix, and a rule that blocks its own remedy is worse than no rule.
+# Scores stay publishable; only dataset/<doc>/ content is blocked.
+CONFIDENTIAL='^dataset/test_6/'
+
 added=$(git diff --cached --name-only --diff-filter=A)
+touched=$(git diff --cached --name-only --diff-filter=ACMRT)
 staged=$(
     {
         printf '%s\n' "$added" | grep -Ei "$DOCS" || true
         printf '%s\n' "$added" | grep -Ei "$IMAGES" | grep -Ev "$IMAGE_ALLOW" || true
+        printf '%s\n' "$touched" | grep -E "$CONFIDENTIAL" || true
     } | grep -v '^$' || true
 )
 
 if [ -n "$staged" ]; then
-    echo "ERROR: refusing to commit corpus document(s):" >&2
+    echo "ERROR: refusing to commit corpus document(s) or confidential ground truth:" >&2
     printf '  %s\n' $staged >&2
     cat >&2 <<'MSG'
 

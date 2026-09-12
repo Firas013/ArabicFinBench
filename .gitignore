@@ -248,6 +248,18 @@ fixtures_local/
 # actually annotated.
 dataset/test_3/
 
+# test_6 is CONFIDENTIAL. Unlike the filings, which are excluded by extension,
+# the risk here is the ground truth itself: Test_6.json and Test_6.md reproduce
+# the document's text and every table cell, so they are the disclosure, not a
+# derivative of it. The exclusion is the whole directory, deliberately, and it
+# does not go away when the annotation improves.
+#
+# Its SCORES are not confidential and stay published — docs/results_test_6.md,
+# the test_6 column in docs/results_all.md, and its rows in results/scores.jsonl
+# carry metrics only, no document content. test_6 therefore remains in the
+# evaluation table while its content does not leave this machine.
+dataset/test_6/
+
 # The corpus directory holds two different kinds of file and they get opposite
 # treatment. The filings themselves are never committed (section 6). The ground
 # truth and its generated sidecars ARE the annotation, and tracking them is what
