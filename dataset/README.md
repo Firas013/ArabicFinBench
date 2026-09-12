@@ -29,20 +29,27 @@ python scripts/afb_gt_to_sidecar.py dataset/test_6/Test_6.json dataset/test_6/Te
 
 ## Current contents
 
-| | document | pages | scan | digits | relations |
-| --- | --- | --- | --- | --- | --- |
-| test_1 | Saudi manufacturer, FY2024 | 3 | no | Arabic-Indic | 16 |
-| test_2 | لجام للرياضة (Leejam Sports), 9M 2022 | 5 | no | Arabic-Indic | 16 |
-| test_3 | شركة الإسمنت السعودية, Q3 2022 | 4 | **yes** | Arabic-Indic | — |
-| test_4 | البنك السعودي البريطاني (SABB), H1 2022 | 7 | no | **Latin** | 3 |
-| test_5 | سدافكو (SADAFCO), 9M FY2022 | 5 | no | Arabic-Indic | 19 |
-| test_6 | شركة المراكز العربية, Dec 2022 | 11 | **yes** | Arabic-Indic | 27 |
+Documents are identified by id only. The issuers are deliberately not named
+here: naming which filings are in the corpus is itself a disclosure, and the id
+is all any part of the harness needs.
+
+| | sector | period | pages | scan | digits | relations |
+| --- | --- | --- | --- | --- | --- | --- |
+| test_1 | manufacturing | FY2024 | 3 | no | Arabic-Indic | 16 |
+| test_2 | consumer services | 9M 2022 | 5 | no | Arabic-Indic | 16 |
+| test_3 | materials | Q3 2022 | 4 | **yes** | Arabic-Indic | — |
+| test_4 | banking | H1 2022 | 7 | no | **Latin** | 3 |
+| test_5 | food & beverage | 9M FY2022 | 5 | no | Arabic-Indic | 19 |
+| test_6 | real estate | Dec 2022 | 11 | **yes** | Arabic-Indic | 27 |
 
 **test_3 has no usable ground truth.** Its `Test_3.json` is a byte-identical copy
-of test_4's and describes the wrong filing; the Saudi Cement document has never
-been annotated. The directory is excluded from git rather than shipping an
-answer key that answers a different question. It is the cheapest way to grow the
-corpus by a document.
+of test_4's and describes the wrong filing; its own document has never been
+annotated. The directory is excluded from git rather than shipping an answer key
+that answers a different question. It is the cheapest way to grow the corpus by
+a document.
+
+**test_6 is not tracked.** Its ground truth is confidential and excluded from
+git; only its de-identified results remain in `results/scores.jsonl`.
 
 `test_4` is the only Latin-digit filing and the only one on which script
 fidelity separates the systems — the others are uniformly Arabic-Indic, where

@@ -278,7 +278,7 @@ def normalize_table_columns(table_html: str, report: TableReport) -> tuple[str, 
     runs on both sides, so it fires on the rectangular ground truth and declines
     on a prediction that emitted one uneven row — leaving the two sides in
     different column frames and charging the difference to the model. Measured
-    on the SADAFCO filing: a system with six ragged tables scored 0.0986 digit
+    on one filing: a system with six ragged tables scored 0.0986 digit
     exactness where its own output, mirrored, gave 0.50; a system emitting
     rectangular tables over the same page scored 0.7254. That gap was raggedness,
     not reading.
@@ -301,7 +301,7 @@ def normalize_table_columns(table_html: str, report: TableReport) -> tuple[str, 
     # colspan=n cell made the row narrower than the table, the permutation was
     # ill-defined, and the whole table was refused -- while the same rule still
     # fired on the colspan-free ground truth, leaving the two sides in different
-    # column frames. On the SADAFCO filing that refused five of nine tables for
+    # column frames. On one filing that refused five of nine tables for
     # one system, whose digit exactness read 0.0986 where its own output,
     # mirrored, gave 0.50.
     #

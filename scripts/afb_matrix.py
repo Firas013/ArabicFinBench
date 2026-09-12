@@ -47,8 +47,8 @@ CORPUS: tuple[tuple[str, str], ...] = (
 UNSCOREABLE = {
     "test_3/Test_3": (
         "no ground truth: `Test_3.json` is a byte-identical copy of `Test_4.json` "
-        "(md5 `f022ef76…`) and describes `Test_4.pdf` (SABB). The Saudi Cement "
-        "filing in `Test_3.pdf` has never been annotated."
+        "(md5 `f022ef76…`) and describes `Test_4.pdf`. The filing in "
+        "`Test_3.pdf` has never been annotated."
     ),
 }
 
